@@ -111,7 +111,8 @@
             "pages": [
               "api/commands/load-initial-data",
               "api/commands/create-random-data",
-              "api/commands/reset-demo"
+              "api/commands/reset-demo",
+              "api/commands/reset-admin-password"
             ]
           }
         ]
