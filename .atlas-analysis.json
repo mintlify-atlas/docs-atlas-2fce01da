@@ -1,0 +1,134 @@
+{
+  "projectType": "saas",
+  "projectName": "Wagtail Bakery Demo",
+  "projectDescription": "A comprehensive demonstration project showcasing Wagtail CMS features through a bakery-themed website with multiple content types, multilingual support, and REST API.",
+  "theme": "maple",
+  "primaryColor": "#f39a2f",
+  "lightColor": "#84643c",
+  "darkColor": "#14140c",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/project-structure",
+              "concepts/content-models",
+              "concepts/streamfield-blocks"
+            ]
+          },
+          {
+            "group": "Content Types",
+            "pages": [
+              "content/blog",
+              "content/breads",
+              "content/recipes",
+              "content/locations",
+              "content/people"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/multilingual",
+              "features/search",
+              "features/snippets",
+              "features/forms",
+              "features/galleries"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/docker",
+              "deployment/heroku",
+              "deployment/production-settings"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/management-commands",
+              "development/customization",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/pages",
+              "api/images",
+              "api/documents"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/blog",
+              "api/models/breads",
+              "api/models/recipes",
+              "api/models/base"
+            ]
+          },
+          {
+            "group": "Management Commands",
+            "pages": [
+              "api/commands/load-initial-data",
+              "api/commands/create-random-data",
+              "api/commands/reset-demo"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multiple Content Types (Blog, Breads, Recipes, Locations)",
+    "StreamField with Custom Blocks",
+    "Multilingual Content (i18n)",
+    "REST API (Wagtail API v2)",
+    "Custom Snippets (Countries, Ingredients, Bread Types)",
+    "Form Builder with Contact Forms",
+    "Image Galleries",
+    "Tag-based Filtering",
+    "Search Functionality",
+    "User Roles and Permissions",
+    "Docker and Vagrant Support",
+    "Production-Ready Deployment Options"
+  ],
+  "publicApiSurface": [
+    "/api/v2/pages/",
+    "/api/v2/images/",
+    "/api/v2/documents/",
+    "BlogPage",
+    "BlogIndexPage",
+    "BreadPage",
+    "BreadsIndexPage",
+    "RecipePage",
+    "LocationPage",
+    "Person",
+    "BaseStreamBlock",
+    "CaptionedImageBlock",
+    "HeadingBlock",
+    "BlockQuote"
+  ]
+}
