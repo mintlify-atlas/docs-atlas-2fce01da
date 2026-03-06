@@ -1,0 +1,687 @@
+---
+title: "Heroku Deployment"
+description: "Deploy the Wagtail Bakery Demo to Heroku using heroku.yml and the Heroku CLI"
+---
+
+## Overview
+
+The Wagtail Bakery Demo is designed for easy deployment to Heroku using container-based deployment with `heroku.yml`. This guide walks you through deploying the application to Heroku from scratch.
+
+## Prerequisites
+
+Before deploying to Heroku, ensure you have:
+
+<Steps>
+  <Step title="Heroku Account">
+    Create a free account at [heroku.com](https://heroku.com) if you don't have one.
+  </Step>
+  
+  <Step title="Heroku CLI">
+    Install the Heroku CLI:
+    
+    <CodeGroup>
+    ```bash macOS
+    brew tap heroku/brew && brew install heroku
+    ```
+    
+    ```bash Ubuntu/Debian
+    curl https://cli-assets.heroku.com/install.sh | sh
+    ```
+    
+    ```bash Windows
+    # Download installer from:
+    # https://cli-assets.heroku.com/heroku-x64.exe
+    ```
+    </CodeGroup>
+    
+    Verify installation:
+    ```bash
+    heroku --version
+    ```
+  </Step>
+  
+  <Step title="Login to Heroku">
+    Authenticate with your Heroku account:
+    
+    ```bash
+    heroku login
+    ```
+  </Step>
+  
+  <Step title="Container Registry Login">
+    Enable container deployment:
+    
+    ```bash
+    heroku container:login
+    ```
+  </Step>
+</Steps>
+
+## Quick Deploy
+
+Deploy the Bakery Demo to Heroku in just a few commands:
+
+<CodeGroup>
+```bash Quick Deployment
+# Clone the repository
+git clone https://github.com/wagtail/bakerydemo.git
+cd bakerydemo
+
+# Create a Heroku app
+heroku create your-app-name
+
+# Add PostgreSQL database
+heroku addons:create heroku-postgresql:essential-0
+
+# Add Redis (optional but recommended)
+heroku addons:create heroku-redis:mini
+
+# Set required environment variables
+heroku config:set DJANGO_SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')
+heroku config:set DJANGO_SETTINGS_MODULE=bakerydemo.settings.production
+
+# Deploy using container stack
+heroku stack:set container
+git push heroku main
+
+# Open your app
+heroku open
+```
+</CodeGroup>
+
+<Note>
+  The first deployment may take 5-10 minutes as Heroku builds the Docker image and runs migrations.
+</Note>
+
+## Heroku Configuration Files
+
+The project includes two configuration files for Heroku deployment:
+
+### heroku.yml
+
+The `heroku.yml` file defines the container-based build and release process:
+
+<CodeGroup>
+```yaml heroku.yml
+build:
+  docker:
+    web:
+      dockerfile: Dockerfile
+  config:
+    NIGHTLY: 0
+
+release:
+  image: web
+  command:
+    - /venv/bin/python manage.py migrate --noinput
+```
+</CodeGroup>
+
+**Configuration Breakdown:**
+
+- **build.docker.web**: Specifies the Dockerfile to build the web container
+- **build.config.NIGHTLY**: Set to `0` for stable Wagtail, `1` for nightly builds
+- **release.command**: Runs database migrations automatically before each release
+
+### Procfile
+
+The `Procfile` defines process types (legacy support):
+
+<CodeGroup>
+```procfile Procfile
+release: yes "yes" | python manage.py migrate
+web: uwsgi ./etc/uwsgi.ini
+```
+</CodeGroup>
+
+<Note>
+  When using `heroku.yml`, the Procfile is primarily for reference. The `heroku.yml` configuration takes precedence.
+</Note>
+
+## Step-by-Step Deployment Guide
+
+### 1. Create Your Heroku App
+
+Create a new Heroku application:
+
+```bash
+# Create app with a specific name
+heroku create bakery-demo-production
+
+# Or let Heroku generate a name
+heroku create
+
+# Set stack to container
+heroku stack:set container
+```
+
+### 2. Add Required Add-ons
+
+<Tabs>
+  <Tab title="PostgreSQL (Required)">
+    Add a PostgreSQL database:
+    
+    ```bash
+    # Essential plan (suitable for production)
+    heroku addons:create heroku-postgresql:essential-0
+    
+    # Or mini plan for small projects
+    heroku addons:create heroku-postgresql:mini
+    ```
+    
+    This automatically sets the `DATABASE_URL` environment variable.
+  </Tab>
+  
+  <Tab title="Redis (Recommended)">
+    Add Redis for caching:
+    
+    ```bash
+    # Mini plan (1MB cache)
+    heroku addons:create heroku-redis:mini
+    
+    # Premium plans with persistence
+    heroku addons:create heroku-redis:premium-0
+    ```
+    
+    This automatically sets `REDIS_URL` and `REDIS_TLS_URL` environment variables.
+    
+    <Note>
+      The production settings automatically use `REDIS_TLS_URL` when available for secure connections.
+    </Note>
+  </Tab>
+  
+  <Tab title="Optional Add-ons">
+    **Papertrail (Logging)**:
+    ```bash
+    heroku addons:create papertrail:chokin
+    ```
+    
+    **Heroku Scheduler (Periodic Tasks)**:
+    ```bash
+    heroku addons:create scheduler:standard
+    ```
+    
+    **New Relic (Monitoring)**:
+    ```bash
+    heroku addons:create newrelic:wayne
+    ```
+  </Tab>
+</Tabs>
+
+### 3. Configure Environment Variables
+
+Set required environment variables:
+
+```bash
+# Generate and set Django secret key
+heroku config:set DJANGO_SECRET_KEY=$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')
+
+# Set Django settings module
+heroku config:set DJANGO_SETTINGS_MODULE=bakerydemo.settings.production
+
+# Set allowed hosts (replace with your domain)
+heroku config:set DJANGO_ALLOWED_HOSTS=your-app-name.herokuapp.com
+
+# Set primary host for admin emails
+heroku config:set PRIMARY_HOST=your-app-name.herokuapp.com
+
+# Ensure debug is off
+heroku config:set DJANGO_DEBUG=off
+```
+
+<Warning>
+  Never commit your `DJANGO_SECRET_KEY` to version control. Always generate it securely and set it via environment variables.
+</Warning>
+
+### 4. Deploy Your Application
+
+Push your code to Heroku:
+
+```bash
+# Deploy main branch
+git push heroku main
+
+# Or deploy a different branch
+git push heroku your-branch:main
+```
+
+The deployment process:
+
+1. **Build Phase**: Heroku builds the Docker image from the Dockerfile
+2. **Release Phase**: Runs `python manage.py migrate --noinput`
+3. **Deploy Phase**: Starts the web dyno with uWSGI
+
+### 5. Post-Deployment Tasks
+
+After deployment, complete these tasks:
+
+<Steps>
+  <Step title="Create Superuser">
+    Create an admin user to access the Wagtail admin:
+    
+    ```bash
+    heroku run python manage.py createsuperuser
+    ```
+    
+    Follow the prompts to set username, email, and password.
+  </Step>
+  
+  <Step title="Load Demo Data (Optional)">
+    Load the bakery demo content:
+    
+    ```bash
+    heroku run python manage.py load_initial_data
+    ```
+    
+    Or enable automatic loading on deployment:
+    ```bash
+    heroku config:set DJANGO_LOAD_INITIAL_DATA=on
+    ```
+  </Step>
+  
+  <Step title="Verify Deployment">
+    Open your application:
+    
+    ```bash
+    heroku open
+    ```
+    
+    Access the admin at: `https://your-app-name.herokuapp.com/admin/`
+  </Step>
+</Steps>
+
+## Advanced Configuration
+
+### Custom Domain Setup
+
+Add a custom domain to your Heroku app:
+
+<Steps>
+  <Step title="Add Domain to Heroku">
+    ```bash
+    heroku domains:add www.yourdomain.com
+    heroku domains:add yourdomain.com
+    ```
+  </Step>
+  
+  <Step title="Get DNS Target">
+    ```bash
+    heroku domains
+    ```
+    
+    Note the DNS target provided by Heroku.
+  </Step>
+  
+  <Step title="Update DNS Records">
+    Add CNAME or ALIAS records with your DNS provider:
+    
+    ```
+    www.yourdomain.com  CNAME  your-dns-target.herokudns.com
+    yourdomain.com      ALIAS  your-dns-target.herokudns.com
+    ```
+  </Step>
+  
+  <Step title="Enable Automatic SSL">
+    Heroku automatically provisions SSL certificates:
+    
+    ```bash
+    heroku certs:auto:enable
+    ```
+  </Step>
+  
+  <Step title="Update Django Settings">
+    Update allowed hosts:
+    
+    ```bash
+    heroku config:set DJANGO_ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+    heroku config:set PRIMARY_HOST=yourdomain.com
+    ```
+  </Step>
+</Steps>
+
+### AWS S3 for Media Storage
+
+Configure AWS S3 for storing user uploads:
+
+```bash
+# Set AWS credentials
+heroku config:set AWS_ACCESS_KEY_ID=your-access-key-id
+heroku config:set AWS_SECRET_ACCESS_KEY=your-secret-access-key
+heroku config:set AWS_STORAGE_BUCKET_NAME=your-bucket-name
+heroku config:set AWS_S3_REGION_NAME=us-east-1
+
+# Optional: Custom domain for S3
+heroku config:set AWS_S3_CUSTOM_DOMAIN=cdn.yourdomain.com
+```
+
+<Note>
+  Using S3 is highly recommended for production deployments to persist media files across dyno restarts.
+</Note>
+
+### Elasticsearch Search Backend
+
+Add Elasticsearch for enhanced search:
+
+```bash
+# Using Bonsai Elasticsearch add-on
+heroku addons:create bonsai:sandbox-10
+
+# Get Elasticsearch URL
+heroku config:get BONSAI_URL
+
+# Set environment variables
+heroku config:set ELASTICSEARCH_ENDPOINT=your-elasticsearch-host
+heroku config:set ELASTICSEARCH_PORT=9200
+heroku config:set ELASTICSEARCH_USE_SSL=on
+heroku config:set ELASTICSEARCH_VERIFY_CERTS=on
+```
+
+### Cloudflare CDN Integration
+
+Enable cache purging for Cloudflare:
+
+```bash
+heroku config:set FRONTEND_CACHE_CLOUDFLARE_ZONEID=your-zone-id
+heroku config:set FRONTEND_CACHE_CLOUDFLARE_BEARER_TOKEN=your-api-token
+```
+
+## Scaling Your Application
+
+### Dyno Scaling
+
+Scale your web dynos based on traffic:
+
+```bash
+# Scale to 2 web dynos
+heroku ps:scale web=2
+
+# Scale up to Standard-1X dyno type
+heroku ps:type web=standard-1x
+
+# View current dyno status
+heroku ps
+```
+
+**Dyno Types:**
+
+| Type | RAM | Price | Use Case |
+|------|-----|-------|----------|
+| Eco | 512MB | $5/mo | Development/staging |
+| Basic | 512MB | $7/mo | Low-traffic sites |
+| Standard-1X | 512MB | $25/mo | Production sites |
+| Standard-2X | 1GB | $50/mo | High-traffic sites |
+| Performance | 2.5GB+ | $250+/mo | Enterprise applications |
+
+### Database Scaling
+
+Upgrade your PostgreSQL plan:
+
+```bash
+# View current plan
+heroku pg:info
+
+# Upgrade to Standard-0
+heroku addons:upgrade heroku-postgresql:standard-0
+
+# View database metrics
+heroku pg:diagnose
+```
+
+## Monitoring and Logs
+
+### View Application Logs
+
+```bash
+# Tail logs in real-time
+heroku logs --tail
+
+# View last 500 lines
+heroku logs -n 500
+
+# Filter by source
+heroku logs --source app --tail
+```
+
+### Application Metrics
+
+View application metrics:
+
+```bash
+# View application metrics in browser
+heroku open --metrics
+
+# Or visit dashboard
+heroku dashboard
+```
+
+### Database Monitoring
+
+```bash
+# Database diagnostics
+heroku pg:diagnose
+
+# Connection info
+heroku pg:info
+
+# Long-running queries
+heroku pg:ps
+
+# Database backups
+heroku pg:backups:capture
+heroku pg:backups:download
+```
+
+## Maintenance and Updates
+
+### Deploy Updates
+
+```bash
+# Pull latest changes
+git pull origin main
+
+# Deploy to Heroku
+git push heroku main
+
+# Monitor deployment
+heroku logs --tail
+```
+
+### Run Management Commands
+
+```bash
+# Access Django shell
+heroku run python manage.py shell
+
+# Run custom management commands
+heroku run python manage.py update_index
+
+# Create cache table
+heroku run python manage.py createcachetable
+```
+
+### Database Backups
+
+```bash
+# Create manual backup
+heroku pg:backups:capture
+
+# Schedule automatic backups (included in Standard plans and above)
+heroku pg:backups:schedule DATABASE_URL --at '02:00 America/Los_Angeles'
+
+# List backups
+heroku pg:backups
+
+# Download backup
+heroku pg:backups:download
+
+# Restore from backup
+heroku pg:backups:restore b001 DATABASE_URL
+```
+
+<Warning>
+  Always test your backup restoration process in a staging environment before relying on it in production.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Application Error (H10)">
+    **Error**: "Application crashed" or "H10 error"
+    
+    **Solutions**:
+    
+    1. Check application logs:
+       ```bash
+       heroku logs --tail
+       ```
+    
+    2. Verify environment variables:
+       ```bash
+       heroku config
+       ```
+    
+    3. Check dyno status:
+       ```bash
+       heroku ps
+       ```
+    
+    4. Restart dynos:
+       ```bash
+       heroku restart
+       ```
+  </Accordion>
+  
+  <Accordion title="Database Connection Issues">
+    **Error**: "Could not connect to database"
+    
+    **Solutions**:
+    
+    1. Verify DATABASE_URL is set:
+       ```bash
+       heroku config:get DATABASE_URL
+       ```
+    
+    2. Check database status:
+       ```bash
+       heroku pg:info
+       ```
+    
+    3. Run migrations:
+       ```bash
+       heroku run python manage.py migrate
+       ```
+  </Accordion>
+  
+  <Accordion title="Static Files Not Loading">
+    **Error**: 404 errors for CSS/JS files
+    
+    **Solutions**:
+    
+    Static files are handled by WhiteNoise. Ensure:
+    
+    1. WhiteNoise is in MIDDLEWARE (automatically configured in production.py)
+    2. Collectstatic runs during build (automatically handled in Dockerfile)
+    
+    Manually collect static files:
+    ```bash
+    heroku run python manage.py collectstatic --noinput
+    ```
+  </Accordion>
+  
+  <Accordion title="Slow Performance">
+    **Issue**: Application responds slowly
+    
+    **Solutions**:
+    
+    1. Scale up dyno type:
+       ```bash
+       heroku ps:type web=standard-2x
+       ```
+    
+    2. Add more dynos:
+       ```bash
+       heroku ps:scale web=2
+       ```
+    
+    3. Ensure Redis is configured for caching
+    
+    4. Upgrade database plan:
+       ```bash
+       heroku addons:upgrade heroku-postgresql:standard-0
+       ```
+    
+    5. Check slow queries:
+       ```bash
+       heroku pg:ps
+       ```
+  </Accordion>
+  
+  <Accordion title="Memory Errors (R14, R15)">
+    **Error**: "Memory quota exceeded"
+    
+    **Solutions**:
+    
+    1. Upgrade to larger dyno:
+       ```bash
+       heroku ps:type web=standard-2x
+       ```
+    
+    2. Reduce worker threads in uwsgi.ini (edit locally and redeploy)
+    
+    3. Monitor memory usage:
+       ```bash
+       heroku logs --tail | grep "Memory"
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Cost Optimization
+
+### Recommended Production Setup
+
+**Minimal Production** (~$20/month):
+```bash
+# Eco dynos (can sleep)
+heroku ps:type web=eco
+heroku ps:scale web=1
+
+# Essential PostgreSQL
+heroku addons:create heroku-postgresql:essential-0
+
+# Mini Redis
+heroku addons:create heroku-redis:mini
+```
+
+**Standard Production** (~$75/month):
+```bash
+# Standard dynos (no sleeping)
+heroku ps:type web=standard-1x
+heroku ps:scale web=2
+
+# Standard PostgreSQL
+heroku addons:upgrade heroku-postgresql:standard-0
+
+# Premium Redis with persistence
+heroku addons:upgrade heroku-redis:premium-0
+```
+
+<Note>
+  Eco dynos sleep after 30 minutes of inactivity. Use Basic or Standard dynos for production sites that need 24/7 availability.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Settings" icon="gear" href="/deployment/production-settings">
+    Deep dive into production configuration
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Alternative deployment with Docker
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/getting-started/configuration">
+    Learn about configuration options
+  </Card>
+  <Card title="Deployment Overview" icon="book" href="/deployment/overview">
+    Explore other deployment options
+  </Card>
+</CardGroup>

@@ -1,0 +1,682 @@
+---
+title: "Production Settings"
+description: "Comprehensive guide to production settings, environment variables, and configuration options for the Wagtail Bakery Demo"
+---
+
+## Overview
+
+The production settings module at `bakerydemo/settings/production.py` provides a secure, production-ready configuration for deploying the Wagtail Bakery Demo. This guide covers all configuration options and best practices.
+
+## Settings Module Structure
+
+The production settings inherit from base settings:
+
+```python
+from .base import *  # Imports all base settings
+
+DEBUG = False  # Always False in production
+```
+
+All production-specific configurations override or extend the base settings.
+
+## Security Settings
+
+### Secret Key
+
+<Warning>
+  **Critical**: Always set `DJANGO_SECRET_KEY` in production. Never use the ephemeral key generated as a fallback.
+</Warning>
+
+The secret key is used for cryptographic signing:
+
+```python
+# In production.py
+if "DJANGO_SECRET_KEY" in os.environ:
+    SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+else:
+    # Generates ephemeral key with warning
+    SECRET_KEY = "".join(
+        [random.SystemRandom().choice(string.printable) for i in range(50)]
+    )
+```
+
+**Generate a secure secret key:**
+
+```bash
+python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+```
+
+**Set in environment:**
+
+```bash
+export DJANGO_SECRET_KEY="your-generated-secret-key-here"
+```
+
+### HTTPS and SSL Settings
+
+Production enforces HTTPS by default:
+
+<CodeGroup>
+```python SSL Redirect
+# Force HTTPS redirect (enabled by default)
+SECURE_SSL_REDIRECT = True
+
+# Detect HTTPS via proxy headers
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+```
+
+```python HSTS Configuration
+# HTTP Strict Transport Security
+DEFAULT_HSTS_SECONDS = 30 * 24 * 60 * 60  # 30 days
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", DEFAULT_HSTS_SECONDS))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False  # Don't affect client subdomains
+```
+
+```python XSS and Content Type Protection
+# Browser XSS filter
+SECURE_BROWSER_XSS_FILTER = True
+
+# Content type sniffing protection
+SECURE_CONTENT_TYPE_NOSNIFF = True
+```
+</CodeGroup>
+
+**Environment Variables:**
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `SECURE_HSTS_SECONDS` | Duration for HSTS header | `2592000` (30 days) |
+| `SECURE_REFERRER_POLICY` | Referrer policy header | `no-referrer-when-downgrade` |
+
+### Allowed Hosts
+
+Configure which domains can serve your application:
+
+```python
+# Accept all hostnames (default - NOT recommended for production)
+ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
+```
+
+<Warning>
+  **Production Requirement**: Always set `DJANGO_ALLOWED_HOSTS` to your actual domain(s).
+</Warning>
+
+**Example configuration:**
+
+```bash
+# Single domain
+export DJANGO_ALLOWED_HOSTS=yourdomain.com
+
+# Multiple domains
+export DJANGO_ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com,staging.yourdomain.com
+```
+
+## Database Configuration
+
+### PostgreSQL Connection
+
+The database is configured via the `DATABASE_URL` environment variable:
+
+```bash
+# Standard PostgreSQL URL format
+DATABASE_URL=postgres://username:password@hostname:5432/database_name
+
+# With SSL (recommended for cloud databases)
+DATABASE_URL=postgres://username:password@hostname:5432/database_name?sslmode=require
+```
+
+**Connection URL Format:**
+
+```
+postgres://[username]:[password]@[hostname]:[port]/[database]
+```
+
+<Note>
+  The `DATABASE_URL` is automatically parsed by `dj-database-url` (configured in base settings).
+</Note>
+
+## Cache Configuration
+
+The production settings support both Redis and local memory caching:
+
+### Redis Cache (Recommended)
+
+<CodeGroup>
+```python Redis Configuration
+# Prefer TLS connection over standard
+REDIS_URL = os.environ.get("REDIS_TLS_URL", os.environ.get("REDIS_URL"))
+
+if REDIS_URL:
+    connection_pool_kwargs = {}
+    
+    if REDIS_URL.startswith("rediss"):
+        # Disable certificate validation for Heroku Redis
+        connection_pool_kwargs["ssl_cert_reqs"] = None
+    
+    redis_options = {
+        "IGNORE_EXCEPTIONS": True,
+        "SOCKET_CONNECT_TIMEOUT": 2,  # seconds
+        "SOCKET_TIMEOUT": 2,  # seconds
+        "CONNECTION_POOL_KWARGS": connection_pool_kwargs,
+    }
+    
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL + "/0",
+            "OPTIONS": redis_options,
+        },
+        "renditions": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL + "/1",
+            "OPTIONS": redis_options,
+        },
+    }
+```
+
+```python Fallback Cache
+# Local memory cache if Redis is unavailable
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "bakerydemo",
+        }
+    }
+```
+</CodeGroup>
+
+**Redis Environment Variables:**
+
+| Variable | Description | Priority |
+|----------|-------------|----------|
+| `REDIS_TLS_URL` | Secure Redis connection URL | 1st (preferred) |
+| `REDIS_URL` | Standard Redis connection URL | 2nd (fallback) |
+
+**Redis URL Format:**
+
+```bash
+# Standard Redis
+REDIS_URL=redis://hostname:6379
+
+# With password
+REDIS_URL=redis://:password@hostname:6379
+
+# TLS/SSL (Heroku)
+REDIS_TLS_URL=rediss://:password@hostname:6379
+```
+
+**Cache Usage:**
+
+- **default**: General application caching (sessions, views, etc.)
+- **renditions**: Wagtail image rendition caching
+
+<Note>
+  Using separate Redis databases (0 and 1) allows independent cache clearing for different cache types.
+</Note>
+
+## Static Files and Media
+
+### Static Files with WhiteNoise
+
+Production uses WhiteNoise for efficient static file serving:
+
+```python
+# Add WhiteNoise middleware
+MIDDLEWARE.append("whitenoise.middleware.WhiteNoiseMiddleware")
+
+# Use compressed manifest storage
+STORAGES["staticfiles"]["BACKEND"] = (
+    "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
+```
+
+**Features:**
+- Compression (gzip, Brotli)
+- Cache-friendly filenames with content hashes
+- Far-future cache headers
+- No CDN required (but compatible)
+
+**Static files are collected during Docker build:**
+
+```dockerfile
+RUN DATABASE_URL=postgres://none REDIS_URL=none python manage.py collectstatic --noinput
+```
+
+### Media Storage Options
+
+Configure where user-uploaded media files are stored:
+
+<Tabs>
+  <Tab title="AWS S3">
+    Configure AWS S3 for media storage:
+    
+    ```python
+    if "AWS_STORAGE_BUCKET_NAME" in os.environ:
+        AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
+        AWS_QUERYSTRING_AUTH = False
+        INSTALLED_APPS.append("storages")
+        STORAGES["default"]["BACKEND"] = "storages.backends.s3boto3.S3Boto3Storage"
+        AWS_S3_FILE_OVERWRITE = False
+        AWS_DEFAULT_ACL = "private"
+    ```
+    
+    **Required Environment Variables:**
+    
+    ```bash
+    AWS_STORAGE_BUCKET_NAME=your-bucket-name
+    AWS_ACCESS_KEY_ID=your-access-key-id
+    AWS_SECRET_ACCESS_KEY=your-secret-access-key
+    AWS_REGION=us-east-1
+    ```
+    
+    **Optional Variables:**
+    
+    ```bash
+    # Custom domain (CDN)
+    AWS_S3_CUSTOM_DOMAIN=cdn.yourdomain.com
+    
+    # Specific region
+    AWS_S3_REGION_NAME=us-west-2
+    ```
+  </Tab>
+  
+  <Tab title="Google Cloud Storage">
+    Configure Google Cloud Storage:
+    
+    ```python
+    if "GS_BUCKET_NAME" in os.environ:
+        GS_BUCKET_NAME = os.getenv("GS_BUCKET_NAME")
+        GS_PROJECT_ID = os.getenv("GS_PROJECT_ID")
+        GS_DEFAULT_ACL = "publicRead"
+        GS_AUTO_CREATE_BUCKET = True
+        
+        INSTALLED_APPS.append("storages")
+        STORAGES["default"]["BACKEND"] = "storages.backends.gcloud.GoogleCloudStorage"
+    ```
+    
+    **Required Environment Variables:**
+    
+    ```bash
+    GS_BUCKET_NAME=your-bucket-name
+    GS_PROJECT_ID=your-project-id
+    # Authentication via GOOGLE_APPLICATION_CREDENTIALS or default credentials
+    ```
+  </Tab>
+  
+  <Tab title="Local Storage">
+    Default local file storage (Docker volume):
+    
+    ```python
+    # Default storage (from base settings)
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+    }
+    ```
+    
+    **Docker Volume:**
+    
+    ```dockerfile
+    # Media directories created in Dockerfile
+    RUN mkdir -p /code/bakerydemo/media/images && \
+        mkdir -p /code/bakerydemo/media/original_images && \
+        chown -R 1000:2000 /code/bakerydemo/media
+    
+    VOLUME ["/code/bakerydemo/media/images/"]
+    ```
+    
+    <Warning>
+      Local storage is not recommended for multi-instance deployments. Use S3 or GCS instead.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Email Configuration
+
+The default email backend logs emails to console:
+
+```python
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+```
+
+### Configure SMTP Email
+
+To send real emails, override with environment variables in your deployment:
+
+```bash
+# Add to your environment
+export EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+export EMAIL_HOST=smtp.gmail.com
+export EMAIL_PORT=587
+export EMAIL_USE_TLS=True
+export EMAIL_HOST_USER=your-email@gmail.com
+export EMAIL_HOST_PASSWORD=your-app-password
+export DEFAULT_FROM_EMAIL=noreply@yourdomain.com
+```
+
+<Note>
+  You'll need to add these settings to a custom production settings override or use a service like SendGrid, Mailgun, or AWS SES.
+</Note>
+
+### Wagtail Admin Base URL
+
+Set the base URL for admin email notifications:
+
+```python
+if "PRIMARY_HOST" in os.environ:
+    WAGTAILADMIN_BASE_URL = "https://{}".format(os.environ["PRIMARY_HOST"])
+```
+
+```bash
+export PRIMARY_HOST=yourdomain.com
+```
+
+## Search Backend
+
+Configure Elasticsearch for advanced search capabilities:
+
+<CodeGroup>
+```python Elasticsearch Configuration
+ELASTICSEARCH_ENDPOINT = os.getenv("ELASTICSEARCH_ENDPOINT", "")
+
+if ELASTICSEARCH_ENDPOINT:
+    from elasticsearch import RequestsHttpConnection
+    
+    WAGTAILSEARCH_BACKENDS = {
+        "default": {
+            "BACKEND": "wagtail.search.backends.elasticsearch5",
+            "HOSTS": [
+                {
+                    "host": ELASTICSEARCH_ENDPOINT,
+                    "port": int(os.getenv("ELASTICSEARCH_PORT", "9200")),
+                    "use_ssl": os.getenv("ELASTICSEARCH_USE_SSL", "off") == "on",
+                    "verify_certs": os.getenv("ELASTICSEARCH_VERIFY_CERTS", "off") == "on",
+                }
+            ],
+            "OPTIONS": {
+                "connection_class": RequestsHttpConnection,
+            },
+        }
+    }
+```
+
+```python AWS Elasticsearch Auth
+# With AWS credentials
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    from aws_requests_auth.aws_auth import AWSRequestsAuth
+    
+    WAGTAILSEARCH_BACKENDS["default"]["HOSTS"][0]["http_auth"] = AWSRequestsAuth(
+        aws_access_key=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        aws_token=os.getenv("AWS_SESSION_TOKEN", ""),
+        aws_host=ELASTICSEARCH_ENDPOINT,
+        aws_region=AWS_REGION,
+        aws_service="es",
+    )
+```
+</CodeGroup>
+
+**Environment Variables:**
+
+```bash
+ELASTICSEARCH_ENDPOINT=your-elasticsearch-host.com
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_USE_SSL=on
+ELASTICSEARCH_VERIFY_CERTS=on
+
+# For AWS Elasticsearch
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=us-east-1
+```
+
+<Note>
+  If Elasticsearch is not configured, Wagtail falls back to the database search backend.
+</Note>
+
+## Frontend Cache Purging
+
+Configure Cloudflare cache purging when content is published:
+
+```python
+if (
+    "FRONTEND_CACHE_CLOUDFLARE_TOKEN" in os.environ
+    or "FRONTEND_CACHE_CLOUDFLARE_BEARER_TOKEN" in os.environ
+):
+    INSTALLED_APPS.append("wagtail.contrib.frontend_cache")
+    WAGTAILFRONTENDCACHE = {
+        "default": {
+            "BACKEND": "wagtail.contrib.frontend_cache.backends.CloudflareBackend",
+            "ZONEID": os.environ["FRONTEND_CACHE_CLOUDFLARE_ZONEID"],
+        }
+    }
+```
+
+**Environment Variables:**
+
+<Tabs>
+  <Tab title="API Token (Recommended)">
+    ```bash
+    FRONTEND_CACHE_CLOUDFLARE_BEARER_TOKEN=your-api-token
+    FRONTEND_CACHE_CLOUDFLARE_ZONEID=your-zone-id
+    ```
+  </Tab>
+  
+  <Tab title="Account-Wide Key">
+    ```bash
+    FRONTEND_CACHE_CLOUDFLARE_TOKEN=your-api-key
+    FRONTEND_CACHE_CLOUDFLARE_EMAIL=your-email@example.com
+    FRONTEND_CACHE_CLOUDFLARE_ZONEID=your-zone-id
+    ```
+  </Tab>
+</Tabs>
+
+## Basic Authentication
+
+Optionally protect staging sites with HTTP basic authentication:
+
+```python
+if os.environ.get("BASIC_AUTH_ENABLED", "false").lower().strip() == "true":
+    MIDDLEWARE.insert(0, "baipw.middleware.BasicAuthIPWhitelistMiddleware")
+    
+    BASIC_AUTH_LOGIN = os.environ.get("BASIC_AUTH_LOGIN", "wagtail")
+    BASIC_AUTH_PASSWORD = os.environ.get("BASIC_AUTH_PASSWORD", "wagtail")
+    BASIC_AUTH_DISABLE_CONSUMING_AUTHORIZATION_HEADER = True
+    
+    if "BASIC_AUTH_WHITELISTED_HTTP_HOSTS" in os.environ:
+        BASIC_AUTH_WHITELISTED_HTTP_HOSTS = os.environ[
+            "BASIC_AUTH_WHITELISTED_HTTP_HOSTS"
+        ].split(",")
+```
+
+**Environment Variables:**
+
+```bash
+BASIC_AUTH_ENABLED=true
+BASIC_AUTH_LOGIN=admin
+BASIC_AUTH_PASSWORD=secure-password-here
+BASIC_AUTH_WHITELISTED_HTTP_HOSTS=trusted-host.com,admin.example.com
+```
+
+<Note>
+  Basic auth is useful for protecting staging environments while allowing whitelisted hosts to bypass authentication.
+</Note>
+
+## Logging Configuration
+
+Production logging outputs to console (stdout):
+
+```python
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+        },
+    },
+}
+```
+
+**Environment Variables:**
+
+```bash
+# Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+DJANGO_LOG_LEVEL=WARNING
+```
+
+<Note>
+  Console logging is ideal for containerized environments where logs are captured by the container orchestration platform.
+</Note>
+
+## Complete Environment Variables Reference
+
+### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|--------|
+| `DJANGO_SECRET_KEY` | Django secret key | `your-50-char-secret-key` |
+| `DATABASE_URL` | PostgreSQL connection URL | `postgres://user:pass@host/db` |
+| `DJANGO_SETTINGS_MODULE` | Settings module | `bakerydemo.settings.production` |
+
+### Recommended Variables
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated allowed hosts | `*` |
+| `REDIS_URL` or `REDIS_TLS_URL` | Redis connection URL | None |
+| `PRIMARY_HOST` | Primary domain for emails | None |
+| `DJANGO_DEBUG` | Enable debug mode | `off` |
+
+### Optional: AWS Configuration
+
+| Variable | Description |
+|----------|-------------|
+| `AWS_ACCESS_KEY_ID` | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
+| `AWS_REGION` | AWS region |
+| `AWS_STORAGE_BUCKET_NAME` | S3 bucket for media |
+| `AWS_S3_REGION_NAME` | S3 region |
+| `AWS_S3_CUSTOM_DOMAIN` | Custom domain for S3 |
+
+### Optional: Search Configuration
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `ELASTICSEARCH_ENDPOINT` | Elasticsearch host | None |
+| `ELASTICSEARCH_PORT` | Elasticsearch port | `9200` |
+| `ELASTICSEARCH_USE_SSL` | Use SSL | `off` |
+| `ELASTICSEARCH_VERIFY_CERTS` | Verify SSL certificates | `off` |
+
+### Optional: Cache Configuration
+
+| Variable | Description |
+|----------|-------------|
+| `FRONTEND_CACHE_CLOUDFLARE_ZONEID` | Cloudflare zone ID |
+| `FRONTEND_CACHE_CLOUDFLARE_BEARER_TOKEN` | Cloudflare API token |
+| `FRONTEND_CACHE_CLOUDFLARE_TOKEN` | Cloudflare API key (legacy) |
+| `FRONTEND_CACHE_CLOUDFLARE_EMAIL` | Cloudflare account email |
+
+### Optional: Security Configuration
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `SECURE_HSTS_SECONDS` | HSTS duration in seconds | `2592000` (30 days) |
+| `SECURE_REFERRER_POLICY` | Referrer policy | `no-referrer-when-downgrade` |
+| `BASIC_AUTH_ENABLED` | Enable basic auth | `false` |
+| `BASIC_AUTH_LOGIN` | Basic auth username | `wagtail` |
+| `BASIC_AUTH_PASSWORD` | Basic auth password | `wagtail` |
+| `BASIC_AUTH_WHITELISTED_HTTP_HOSTS` | Bypass auth for hosts | None |
+
+### Optional: Google Cloud
+
+| Variable | Description |
+|----------|-------------|
+| `GS_BUCKET_NAME` | GCS bucket name |
+| `GS_PROJECT_ID` | GCP project ID |
+
+### Optional: Logging
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `DJANGO_LOG_LEVEL` | Django log level | `INFO` |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Environment Variable Management">
+    **Recommendations:**
+    
+    1. Use a secrets management service (AWS Secrets Manager, HashiCorp Vault)
+    2. Never commit `.env` files with real credentials to version control
+    3. Use different credentials for staging and production
+    4. Rotate secrets regularly
+    5. Use strong, randomly generated values
+    
+    **Example `.env.example` for documentation:**
+    
+    ```bash
+    DJANGO_SECRET_KEY=change-me
+    DATABASE_URL=postgres://user:password@localhost/dbname
+    REDIS_URL=redis://localhost:6379
+    DJANGO_ALLOWED_HOSTS=yourdomain.com
+    ```
+  </Accordion>
+  
+  <Accordion title="Security Hardening">
+    **Additional security measures:**
+    
+    1. **Database**: Use SSL connections (`?sslmode=require`)
+    2. **Redis**: Use TLS connections (`REDIS_TLS_URL`)
+    3. **ALLOWED_HOSTS**: Never use `*` in production
+    4. **SECRET_KEY**: Minimum 50 characters, truly random
+    5. **HSTS**: Consider increasing to 1 year after testing
+    6. **CSP**: Consider adding Content Security Policy headers
+  </Accordion>
+  
+  <Accordion title="Performance Optimization">
+    **Optimize production performance:**
+    
+    1. **Redis**: Always use Redis cache in production
+    2. **Database**: Use connection pooling
+    3. **Static Files**: WhiteNoise handles this efficiently
+    4. **Media Files**: Use CDN with S3/GCS
+    5. **Search**: Use Elasticsearch for better performance
+    6. **Caching**: Configure image renditions cache separately
+  </Accordion>
+  
+  <Accordion title="Monitoring and Observability">
+    **Add monitoring:**
+    
+    1. Application monitoring (New Relic, DataDog)
+    2. Error tracking (Sentry)
+    3. Log aggregation (Papertrail, Loggly)
+    4. Uptime monitoring (Pingdom, UptimeRobot)
+    5. Database monitoring (pg:diagnose on Heroku)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy with Docker and docker-compose
+  </Card>
+  <Card title="Heroku Deployment" icon="cloud" href="/deployment/heroku">
+    Deploy to Heroku platform
+  </Card>
+  <Card title="Configuration Guide" icon="gear" href="/getting-started/configuration">
+    Learn about configuration options
+  </Card>
+  <Card title="Deployment Overview" icon="book" href="/deployment/overview">
+    Review deployment strategies
+  </Card>
+</CardGroup>

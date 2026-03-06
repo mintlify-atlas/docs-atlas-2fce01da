@@ -1,0 +1,569 @@
+---
+title: 'Management Commands'
+description: 'Custom Django management commands for the Wagtail Bakery Demo'
+icon: 'terminal'
+---
+
+The Bakery Demo includes several custom management commands to help you work with the demo data, test performance, and maintain your development environment.
+
+## Overview
+
+All management commands are located in `bakerydemo/base/management/commands/` and can be run using:
+
+```bash
+./manage.py <command_name> [options]
+```
+
+## Available Commands
+
+<CardGroup cols={2}>
+  <Card title="load_initial_data" icon="database">
+    Load demo fixtures and media files
+  </Card>
+  <Card title="create_random_data" icon="dice">
+    Generate random content for testing
+  </Card>
+  <Card title="reset_demo" icon="rotate-right">
+    Reset demo to initial state
+  </Card>
+  <Card title="reset_admin_password" icon="key">
+    Update admin password from settings
+  </Card>
+</CardGroup>
+
+## load_initial_data
+
+Loads the initial demo data including pages, images, snippets, and media files.
+
+### Usage
+
+```bash
+./manage.py load_initial_data
+```
+
+### What It Does
+
+<Steps>
+  <Step title="Copy Media Files">
+    Recursively copies media files from `bakerydemo/base/fixtures/media` to your configured storage backend.
+
+    ```python
+    local_storage = FileSystemStorage(os.path.join(fixtures_dir, "media"))
+    self._copy_files(local_storage, "")
+    ```
+
+    This works with both local file storage and cloud providers like S3.
+  </Step>
+
+  <Step title="Clean Default Content">
+    Removes the auto-generated default Site and Page instances that Wagtail creates during installation:
+
+    ```python
+    if Site.objects.filter(hostname="localhost").exists():
+        Site.objects.get(hostname="localhost").delete()
+    if Page.objects.filter(title="Welcome to your new Wagtail site!").exists():
+        Page.objects.get(title="Welcome to your new Wagtail site!").delete()
+    ```
+  </Step>
+
+  <Step title="Load Fixtures">
+    Loads the demo data from `bakerydemo/base/fixtures/bakerydemo.json`:
+
+    ```python
+    call_command("loaddata", fixture_file, verbosity=0)
+    ```
+  </Step>
+
+  <Step title="Update Indexes">
+    Rebuilds the search and reference indexes:
+
+    ```python
+    call_command("update_index", verbosity=0)
+    call_command("rebuild_references_index", verbosity=0)
+    ```
+  </Step>
+</Steps>
+
+### Example Output
+
+```
+Copying media files to configured storage...
+Awesome. Your data is loaded! The bakery's doors are almost ready to open...
+```
+
+### Use Cases
+
+- Initial project setup
+- Restoring demo data after testing
+- Setting up a new environment
+- Resetting to a known good state
+
+<Note>
+This command is automatically called by `reset_demo` after resetting the database.
+</Note>
+
+## create_random_data
+
+Generates random pages, snippets, and images for performance testing and load testing.
+
+### Usage
+
+```bash
+./manage.py create_random_data <page_count> <snippet_count> <image_count>
+```
+
+### Arguments
+
+<ParamField path="page_count" type="integer" required>
+  Number of pages of each type to create (blog, bread, location, standard)
+</ParamField>
+
+<ParamField path="snippet_count" type="integer" required>
+  Number of snippets of each type to create (countries, ingredients, bread types, people, footer text)
+</ParamField>
+
+<ParamField path="image_count" type="integer" required>
+  Total number of images to create
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+```bash Small Dataset
+# Create 10 pages, 5 snippets, and 20 images
+./manage.py create_random_data 10 5 20
+```
+
+```bash Large Dataset
+# Create 100 pages, 50 snippets, and 200 images for load testing
+./manage.py create_random_data 100 50 200
+```
+
+```bash Quick Test
+# Create minimal data for quick testing
+./manage.py create_random_data 5 3 10
+```
+</CodeGroup>
+
+### What It Creates
+
+<Accordion title="Pages Created">
+  **Bread Pages** (`page_count` items)
+  ```python
+  BreadPage(
+      title=lorem_ipsum.words(4, common=False),
+      introduction=lorem_ipsum.paragraph(),
+      bread_type=random_bread_type,
+      body=fake_stream_field(),
+      origin=random_country,
+      image=random_image,
+  )
+  ```
+
+  **Location Pages** (`page_count` items)
+  ```python
+  LocationPage(
+      title=lorem_ipsum.words(4, common=False),
+      introduction=lorem_ipsum.paragraph(),
+      image=random_image,
+      address=lorem_ipsum.paragraph(),
+      body=fake_stream_field(),
+      lat_long="64.144367, -21.939182",
+  )
+  ```
+
+  **Blog Pages** (`page_count` items)
+  ```python
+  BlogPage(
+      title=lorem_ipsum.words(4, common=False),
+      introduction=lorem_ipsum.paragraph(),
+      body=fake_stream_field(),
+      subtitle=lorem_ipsum.words(10, common=False),
+      date_published=timezone.now(),
+  )
+  ```
+
+  **Standard Pages** (`page_count + 1` items)
+  
+  Creates one top-level page and `page_count` child pages nested under it.
+</Accordion>
+
+<Accordion title="Snippets Created">
+  For each snippet type, creates `snippet_count` items:
+
+  - **Countries**: Random country names
+  - **Bread Ingredients**: Random ingredient names
+  - **Bread Types**: Random bread type names
+  - **People**: Random person with first name, last name, job title, and image
+  - **Footer Text**: Random footer content
+</Accordion>
+
+<Accordion title="Images Created">
+  Creates `image_count` images by randomly selecting from fixtures:
+  ```python
+  # Source images from
+  FIXTURE_MEDIA_DIR = "bakerydemo/base/fixtures/media/original_images"
+  
+  # Each image includes:
+  Image.objects.create(
+      title=random_title,
+      width=image_width,
+      height=image_height,
+      file_size=file_size,
+  )
+  ```
+</Accordion>
+
+### Example Output
+
+```
+Creating images...
+Creating countries...
+Creating bread ingredients...
+Creating bread types...
+Creating people...
+Creating footer text...
+Creating bread pages...
+Creating location pages...
+Creating blog pages...
+Creating standard pages...
+```
+
+### Use Cases
+
+- **Performance Testing**: Generate large datasets to test page load times
+- **Load Testing**: Create thousands of pages to test server capacity
+- **UI Testing**: Test pagination, filtering, and search with lots of content
+- **Database Optimization**: Test query performance with realistic data volumes
+
+<Warning>
+Generating large datasets (e.g., 1000+ pages) can take several minutes and significantly increase database size.
+</Warning>
+
+## reset_demo
+
+Resets the entire demo to its initial state by wiping the database and reloading fixtures.
+
+### Usage
+
+```bash
+./manage.py reset_demo
+```
+
+<Warning>
+This command is **destructive** and will delete all data. Only available with PostgreSQL databases.
+</Warning>
+
+### Requirements
+
+- PostgreSQL database (will not work with SQLite)
+- `django-extensions` installed (included in development requirements)
+
+### What It Does
+
+<Steps>
+  <Step title="Validate Database">
+    Ensures you're using PostgreSQL:
+
+    ```python
+    if settings.DATABASES[DEFAULT_DB_ALIAS]["ENGINE"] not in POSTGRESQL_ENGINES:
+        raise CommandError(
+            "This command can be used only with PostgreSQL databases."
+        )
+    ```
+  </Step>
+
+  <Step title="Remove Storage Files">
+    Removes all files from S3 or deletes images/documents:
+
+    ```python
+    if "s3" in default_storage.__class__.__name__.lower():
+        default_storage.bucket.objects.all().delete()
+    else:
+        get_image_model().objects.all().delete()
+        get_document_model().objects.all().delete()
+    ```
+  </Step>
+
+  <Step title="Reset Database Schema">
+    Drops all tables and recreates the schema:
+
+    ```python
+    call_command("reset_schema", interactive=False)
+    ```
+  </Step>
+
+  <Step title="Run Migrations">
+    Applies all migrations:
+
+    ```python
+    call_command("migrate", interactive=False)
+    ```
+  </Step>
+
+  <Step title="Clear Caches">
+    Clears all configured caches:
+
+    ```python
+    for cache in caches.all():
+        cache.clear()
+    ```
+  </Step>
+
+  <Step title="Reload Data">
+    Loads initial demo data:
+
+    ```python
+    call_command("load_initial_data")
+    ```
+  </Step>
+
+  <Step title="Reset Admin Password">
+    Updates the admin password:
+
+    ```python
+    call_command("reset_admin_password")
+    ```
+  </Step>
+</Steps>
+
+### Example Output
+
+```
+Removing files from S3
+Reset schema
+Running migrations...
+Copying media files to configured storage...
+Awesome. Your data is loaded! The bakery's doors are almost ready to open...
+```
+
+### Use Cases
+
+- Reset demo after testing destructive operations
+- Clean slate for demonstrations
+- Fix database corruption issues
+- Prepare staging environment
+
+### Alternative for SQLite
+
+If you're using SQLite, manually reset by:
+
+```bash
+rm bakerydemodb
+./manage.py migrate
+./manage.py load_initial_data
+```
+
+## reset_admin_password
+
+Updates the admin user's password to match the `ADMIN_PASSWORD` setting.
+
+### Usage
+
+```bash
+./manage.py reset_admin_password
+```
+
+### What It Does
+
+```python
+admin_user = User.objects.get(username="admin")
+admin_user.set_password(settings.ADMIN_PASSWORD)
+admin_user.save(update_fields=["password"])
+```
+
+### Configuration
+
+The password is read from settings (default: "changeme"):
+
+```python
+# bakerydemo/settings/base.py
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "changeme")
+```
+
+### Setting a Custom Password
+
+<CodeGroup>
+```bash Environment Variable
+export ADMIN_PASSWORD="your-secure-password"
+./manage.py reset_admin_password
+```
+
+```bash .env File
+# Add to .env
+ADMIN_PASSWORD=your-secure-password
+
+# Then run
+./manage.py reset_admin_password
+```
+
+```bash Inline
+ADMIN_PASSWORD="your-secure-password" ./manage.py reset_admin_password
+```
+</CodeGroup>
+
+### Use Cases
+
+- Synchronize password across environments
+- Reset password after demo sessions
+- Automate deployment scripts
+- Called automatically by `reset_demo`
+
+<Note>
+This command only updates the password if a user named "admin" exists. It will raise an error if the admin user is not found.
+</Note>
+
+## Built-in Django Commands
+
+The demo also uses standard Django and Wagtail management commands:
+
+### Database Management
+
+```bash
+# Run migrations
+./manage.py migrate
+
+# Create migrations
+./manage.py makemigrations
+
+# Show migrations
+./manage.py showmigrations
+```
+
+### Search Index
+
+```bash
+# Update search index
+./manage.py update_index
+
+# Rebuild search index
+./manage.py rebuild_index
+
+# Rebuild references index
+./manage.py rebuild_references_index
+```
+
+### User Management
+
+```bash
+# Create superuser
+./manage.py createsuperuser
+
+# Change user password
+./manage.py changepassword admin
+```
+
+### Data Export
+
+```bash
+# Export all data
+./manage.py dumpdata --natural-foreign --indent 2 \
+  -e auth.permission -e contenttypes \
+  -e wagtailcore.GroupCollectionPermission \
+  -e wagtailimages.rendition -e sessions \
+  > backup.json
+
+# Load data
+./manage.py loaddata backup.json
+```
+
+### Development
+
+```bash
+# Start development server
+./manage.py runserver
+
+# Run tests
+./manage.py test
+
+# Open Django shell
+./manage.py shell
+
+# Show project URLs
+./manage.py show_urls
+```
+
+## Common Workflows
+
+### Fresh Start
+
+```bash
+# Reset everything to initial state
+rm bakerydemodb
+./manage.py migrate
+./manage.py load_initial_data
+./manage.py runserver
+```
+
+### Performance Testing
+
+```bash
+# Load initial data
+./manage.py load_initial_data
+
+# Add 100 pages for testing
+./manage.py create_random_data 100 50 200
+
+# Test search performance
+./manage.py update_index
+```
+
+### Demo Preparation
+
+```bash
+# Reset to clean state (PostgreSQL only)
+./manage.py reset_demo
+
+# Or manually (SQLite)
+rm bakerydemodb
+./manage.py migrate
+./manage.py load_initial_data
+```
+
+## Tips and Best Practices
+
+<Accordion title="Run commands in virtual environment">
+  Always ensure your virtual environment is activated:
+  ```bash
+  source .venv/bin/activate  # macOS/Linux
+  .venv\Scripts\activate.bat  # Windows
+  ```
+</Accordion>
+
+<Accordion title="Use verbosity flags for debugging">
+  Add `-v 2` or `-v 3` for more detailed output:
+  ```bash
+  ./manage.py migrate -v 2
+  ./manage.py load_initial_data -v 3
+  ```
+</Accordion>
+
+<Accordion title="Script multiple commands">
+  Create a setup script for common workflows:
+  ```bash
+  #!/bin/bash
+  ./manage.py migrate
+  ./manage.py load_initial_data
+  ./manage.py create_random_data 10 5 20
+  ./manage.py runserver
+  ```
+</Accordion>
+
+<Accordion title="Backup before destructive operations">
+  Always backup data before running reset commands:
+  ```bash
+  ./manage.py dumpdata > backup.json
+  ./manage.py reset_demo
+  ```
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customization Guide" icon="palette" href="/development/customization">
+    Learn how to customize the demo
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/concepts/project-structure">
+    Understand the codebase layout
+  </Card>
+</CardGroup>

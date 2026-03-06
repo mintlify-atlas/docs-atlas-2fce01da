@@ -1,0 +1,348 @@
+---
+title: Location Pages
+description: Location content types for bakery locations with operating hours and map integration
+---
+
+The locations app manages bakery locations with detailed operating hours, address information, and map integration.
+
+## LocationPage
+
+Detail page for a specific bakery location with operating hours and map coordinates.
+
+### Model Definition
+
+```python bakerydemo/locations/models.py
+class LocationPage(Page):
+    """
+    Detail for a specific bakery location.
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(), verbose_name="Page body", blank=True, use_json_field=True
+    )
+    address = models.TextField()
+    lat_long = models.CharField(
+        max_length=36,
+        help_text="Comma separated lat/long. (Ex. 64.144367, -21.939182) "
+                  "Right click Google Maps and select 'What's Here'",
+        validators=[
+            RegexValidator(
+                regex=r"^(\-?\d+(\.\d+)?),\s*(\-?\d+(\.\d+)?)$",
+                message="Lat Long must be a comma-separated numeric lat and long",
+                code="invalid_lat_long",
+            ),
+        ],
+    )
+```
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Introductory text describing the location. Optional.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Hero image for the location. Should be landscape mode with horizontal width between 1000px and 3000px.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Main content using `BaseStreamBlock`. Can include rich content about the location.
+</ParamField>
+
+<ParamField path="address" type="TextField">
+  Physical address of the bakery location. Required field.
+</ParamField>
+
+<ParamField path="lat_long" type="CharField">
+  Geographic coordinates for map display. Format: `latitude, longitude` (e.g., `64.144367, -21.939182`).
+  
+  Includes validation to ensure proper comma-separated numeric format.
+</ParamField>
+
+### Admin Configuration
+
+<Tabs>
+  <Tab title="Content Panels">
+    ```python
+    content_panels = [
+        FieldPanel("title"),
+        FieldPanel("introduction"),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        FieldPanel("address"),
+        FieldPanel("lat_long"),
+        InlinePanel(
+            "hours_of_operation", 
+            heading="Hours of Operation", 
+            label="Slot"
+        ),
+    ]
+    ```
+    
+    Operating hours are managed via an inline panel with orderable day slots.
+  </Tab>
+  
+  <Tab title="Search Configuration">
+    ```python
+    search_fields = Page.search_fields + [
+        index.SearchField("address"),
+        index.SearchField("body"),
+    ]
+    ```
+    
+    Addresses and body content are searchable.
+  </Tab>
+  
+  <Tab title="API Fields">
+    ```python
+    api_fields = [
+        APIField("introduction"),
+        APIField("image"),
+        APIField("body"),
+        APIField("address"),
+        APIField("lat_long"),
+        APIField("is_open"),
+        APIField("hours_of_operation"),
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Operating Hours
+
+Locations have related operating hours through the `LocationOperatingHours` model:
+
+```python bakerydemo/locations/models.py
+class LocationOperatingHours(Orderable, OperatingHours):
+    """
+    A model creating a relationship between the OperatingHours and Location
+    """
+    location = ParentalKey(
+        "LocationPage", related_name="hours_of_operation", on_delete=models.CASCADE
+    )
+```
+
+The base `OperatingHours` abstract model defines:
+
+```python
+class OperatingHours(models.Model):
+    day = models.CharField(max_length=3, choices=DAY_CHOICES, default="MON")
+    opening_time = models.TimeField(blank=True, null=True)
+    closing_time = models.TimeField(blank=True, null=True)
+    closed = models.BooleanField(
+        "Closed?", 
+        blank=True, 
+        help_text="Tick if location is closed on this day"
+    )
+    
+    class Meta:
+        abstract = True
+```
+
+### Day Choices
+
+Operating hours use standardized day abbreviations:
+
+```python bakerydemo/locations/choices.py
+DAY_CHOICES = (
+    ("MON", "Monday"),
+    ("TUE", "Tuesday"),
+    ("WED", "Wednesday"),
+    ("THU", "Thursday"),
+    ("FRI", "Friday"),
+    ("SAT", "Saturday"),
+    ("SUN", "Sunday"),
+)
+```
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="operating_hours" icon="clock">
+    Property to access all operating hours for the location.
+    
+    ```python
+    @property
+    def operating_hours(self):
+        hours = self.hours_of_operation.all()
+        return hours
+    ```
+  </Card>
+  
+  <Card title="is_open()" icon="door-open">
+    Determines if the location is currently open (timezone naive).
+    
+    ```python
+    def is_open(self):
+        now = datetime.now()
+        current_time = now.time()
+        current_day = now.strftime("%a").upper()
+        try:
+            self.operating_hours.get(
+                day=current_day,
+                opening_time__lte=current_time,
+                closing_time__gte=current_time,
+                closed=False,
+            )
+            return True
+        except LocationOperatingHours.DoesNotExist:
+            return False
+    ```
+  </Card>
+  
+  <Card title="get_context()" icon="brackets-curly">
+    Adds map coordinates and API key to template context.
+    
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        context["lat"] = self.lat_long.split(",")[0]
+        context["long"] = self.lat_long.split(",")[1]
+        context["google_map_api_key"] = settings.GOOGLE_MAP_API_KEY
+        return context
+    ```
+  </Card>
+</CardGroup>
+
+<Note>
+  The `is_open()` method is timezone naive. For production use, consider implementing timezone-aware checks based on location.
+</Note>
+
+### Page Hierarchy
+
+<Note>
+  **Parent:** LocationPage can only be created under `LocationsIndexPage`.
+</Note>
+
+## LocationsIndexPage
+
+Index page listing all bakery locations.
+
+### Model Definition
+
+```python bakerydemo/locations/models.py
+class LocationsIndexPage(Page):
+    """
+    A Page model that creates an index page (a listview)
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+```
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="children()" icon="list">
+    Returns all live child location pages.
+    
+    ```python
+    def children(self):
+        return self.get_children().specific().live()
+    ```
+  </Card>
+  
+  <Card title="get_context()" icon="brackets-curly">
+    Provides locations ordered alphabetically by title.
+    
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        context["locations"] = (
+            LocationPage.objects
+            .descendant_of(self)
+            .live()
+            .order_by("title")
+        )
+        return context
+    ```
+  </Card>
+</CardGroup>
+
+### Page Hierarchy
+
+<Note>
+  **Children:** LocationsIndexPage can only have `LocationPage` children.
+</Note>
+
+## Validation
+
+The `lat_long` field includes custom validation using `RegexValidator`:
+
+```python
+validators=[
+    RegexValidator(
+        regex=r"^(\-?\d+(\.\d+)?),\s*(\-?\d+(\.\d+)?)$",
+        message="Lat Long must be a comma-separated numeric lat and long",
+        code="invalid_lat_long",
+    ),
+]
+```
+
+Valid formats:
+- `64.144367, -21.939182`
+- `51.5074, -0.1278`
+- `-33.8688, 151.2093`
+
+Invalid formats will show an error message in the admin.
+
+## Map Integration
+
+The location page includes Google Maps integration:
+
+1. Coordinates are split in `get_context()` into separate lat/long values
+2. Google Maps API key is passed from Django settings
+3. Template receives `lat`, `long`, and `google_map_api_key` variables
+
+<Note>
+  You need to set `GOOGLE_MAP_API_KEY` in your Django settings for map functionality.
+</Note>
+
+## Usage Example
+
+1. Create a `LocationsIndexPage` under your home page
+2. Add `LocationPage` instances for each bakery location
+3. Enter the physical address
+4. Right-click on Google Maps and select "What's here" to get coordinates
+5. Add operating hours using the inline panel:
+   - Select day of the week
+   - Set opening and closing times
+   - Check "Closed?" for days the location is closed
+6. Locations appear alphabetically on the index page
+7. Each location displays a map and shows if currently open
+
+## API Fields
+
+The `is_open()` method is exposed through the API, allowing external services to check location status:
+
+```json
+{
+  "title": "Downtown Bakery",
+  "address": "123 Main Street",
+  "lat_long": "40.7128, -74.0060",
+  "is_open": true,
+  "hours_of_operation": [
+    {
+      "day": "MON",
+      "get_day_display": "Monday",
+      "opening_time": "08:00:00",
+      "closing_time": "18:00:00",
+      "closed": false
+    }
+  ]
+}
+```

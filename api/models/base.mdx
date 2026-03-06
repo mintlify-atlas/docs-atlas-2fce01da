@@ -1,0 +1,572 @@
+---
+title: 'Base Models'
+description: 'Core models including Person, HomePage, FormPage, and other foundational page types'
+---
+
+## Overview
+
+The base models provide the foundational page types and snippets used throughout the Wagtail Bakery Demo. This includes the Person snippet, HomePage with featured sections, form functionality, gallery pages, and site settings.
+
+## Person
+
+A snippet model to store Person objects with full workflow and revision support.
+
+<Accordion title="Full Class Definition">
+```python
+class Person(
+    WorkflowMixin,
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    index.Indexed,
+    ClusterableModel,
+):
+    """
+    A Django model to store Person objects.
+    It is registered using `register_snippet` as a function in wagtail_hooks.py
+    to allow it to have a menu item within a custom menu item group.
+
+    `Person` uses the `ClusterableModel`, which allows the relationship with
+    another model to be stored locally to the 'parent' model (e.g. a PageModel)
+    until the parent is explicitly saved. This allows the editor to use the
+    'Preview' button, to preview the content, without saving the relationships
+    to the database.
+    https://github.com/wagtail/django-modelcluster
+    """
+
+    first_name = models.CharField("First name", max_length=254)
+    last_name = models.CharField("Last name", max_length=254)
+    job_title = models.CharField("Job title", max_length=254)
+
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    workflow_states = GenericRelation(
+        "wagtailcore.WorkflowState",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="person",
+        for_concrete_model=False,
+    )
+
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="person",
+        for_concrete_model=False,
+    )
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="first_name" type="CharField">
+  Person's first name. Maximum length of 254 characters.
+</ParamField>
+
+<ParamField path="last_name" type="CharField">
+  Person's last name. Maximum length of 254 characters.
+</ParamField>
+
+<ParamField path="job_title" type="CharField">
+  Person's job title or role. Maximum length of 254 characters.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Profile image for the person. Optional field referencing `wagtailimages.Image`.
+</ParamField>
+
+### Panels
+
+```python
+panels = [
+    MultiFieldPanel(
+        [
+            FieldRowPanel(
+                [
+                    FieldPanel("first_name"),
+                    FieldPanel("last_name"),
+                ]
+            )
+        ],
+        "Name",
+    ),
+    FieldPanel("job_title"),
+    FieldPanel("image"),
+    PublishingPanel(),
+]
+```
+
+### Search Fields
+
+```python
+search_fields = [
+    index.SearchField("first_name"),
+    index.SearchField("last_name"),
+    index.FilterField("job_title"),
+    index.AutocompleteField("first_name"),
+    index.AutocompleteField("last_name"),
+]
+```
+
+### Properties
+
+<Accordion title="thumb_image">
+```python
+@property
+def thumb_image(self):
+    # Returns an empty string if there is no profile pic or the rendition
+    # file can't be found.
+    try:
+        return self.image.get_rendition("fill-50x50").img_tag()
+    except:
+        return ""
+```
+
+Returns a 50x50 thumbnail image tag, or empty string if image unavailable.
+</Accordion>
+
+<Accordion title="preview_modes">
+```python
+@property
+def preview_modes(self):
+    return PreviewableMixin.DEFAULT_PREVIEW_MODES + [("blog_post", _("Blog post"))]
+```
+
+Defines available preview modes including a custom "Blog post" mode.
+</Accordion>
+
+### Methods
+
+<Accordion title="get_preview_template(request, mode_name)">
+```python
+def get_preview_template(self, request, mode_name):
+    from bakerydemo.blog.models import BlogPage
+
+    if mode_name == "blog_post":
+        return BlogPage.template
+    return "base/preview/person.html"
+```
+
+Returns appropriate template based on preview mode.
+</Accordion>
+
+---
+
+## HomePage
+
+The site's home page with hero section, body, promo area, and featured sections.
+
+<Accordion title="Key Fields">
+```python
+class HomePage(Page):
+    # Hero section
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Homepage image",
+    )
+    hero_text = models.CharField(
+        max_length=255, help_text="Write an introduction for the bakery"
+    )
+    hero_cta = models.CharField(
+        verbose_name="Hero CTA",
+        max_length=255,
+        help_text="Text to display on Call to Action",
+    )
+    hero_cta_link = models.ForeignKey(
+        "wagtailcore.Page",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Hero CTA link",
+        help_text="Choose a page to link to for the Call to Action",
+    )
+
+    # Body section
+    body = StreamField(
+        BaseStreamBlock(),
+        verbose_name="Home content block",
+        blank=True,
+        use_json_field=True,
+    )
+
+    # Promo section
+    promo_image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Promo image",
+    )
+    promo_title = models.CharField(
+        blank=True, max_length=255, help_text="Title to display above the promo copy"
+    )
+    promo_text = RichTextField(
+        null=True, blank=True, max_length=1000, help_text="Write some promotional copy"
+    )
+```
+</Accordion>
+
+### Hero Section
+
+<ParamField path="image" type="ForeignKey">
+  Main homepage hero image.
+</ParamField>
+
+<ParamField path="hero_text" type="CharField">
+  Introduction text for the bakery. Maximum 255 characters.
+</ParamField>
+
+<ParamField path="hero_cta" type="CharField">
+  Call-to-action button text. Maximum 255 characters.
+</ParamField>
+
+<ParamField path="hero_cta_link" type="ForeignKey">
+  Page to link to from the CTA button.
+</ParamField>
+
+### Body Section
+
+<ParamField path="body" type="StreamField">
+  Main content area using `BaseStreamBlock`. Supports rich content including headings, paragraphs, images, and embeds.
+</ParamField>
+
+### Promo Section
+
+<ParamField path="promo_image" type="ForeignKey">
+  Image for the promotional section.
+</ParamField>
+
+<ParamField path="promo_title" type="CharField">
+  Title for the promotional section. Maximum 255 characters.
+</ParamField>
+
+<ParamField path="promo_text" type="RichTextField">
+  Rich text promotional copy. Maximum 1000 characters.
+</ParamField>
+
+### Featured Sections
+
+The HomePage includes three featured sections that display child pages:
+
+<ParamField path="featured_section_1" type="ForeignKey">
+  First featured section. Displays up to 3 child items.
+</ParamField>
+
+<ParamField path="featured_section_2" type="ForeignKey">
+  Second featured section. Displays up to 3 child items.
+</ParamField>
+
+<ParamField path="featured_section_3" type="ForeignKey">
+  Third featured section. Displays up to 6 child items.
+</ParamField>
+
+Each featured section has a corresponding `_title` field for the section heading.
+
+---
+
+## StandardPage
+
+A generic content page for general-purpose content.
+
+<Accordion title="Full Class Definition">
+```python
+class StandardPage(Page):
+    """
+    A generic content page. On this demo site we use it for an about page but
+    it could be used for any type of page content that only needs a title,
+    image, introduction and body field
+    """
+
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(), verbose_name="Page body", blank=True, use_json_field=True
+    )
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Text to describe the page.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Page image. Landscape orientation recommended.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Main page content using `BaseStreamBlock`.
+</ParamField>
+
+---
+
+## FormPage
+
+Contact form or data collection form using Wagtail Forms.
+
+<Accordion title="Full Class Definition">
+```python
+class FormPage(AbstractEmailForm):
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    body = StreamField(BaseStreamBlock(), use_json_field=True)
+    thank_you_text = RichTextField(blank=True)
+
+    # Note how we include the FormField object via an InlinePanel using the
+    # related_name value
+    content_panels = AbstractEmailForm.content_panels + [
+        FormSubmissionsPanel(),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        InlinePanel("form_fields", heading="Form fields", label="Field"),
+        FieldPanel("thank_you_text"),
+        MultiFieldPanel(
+            [
+                FieldRowPanel(
+                    [
+                        FieldPanel("from_address"),
+                        FieldPanel("to_address"),
+                    ]
+                ),
+                FieldPanel("subject"),
+            ],
+            "Email",
+        ),
+    ]
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="image" type="ForeignKey">
+  Optional header image for the form page.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Content above the form using `BaseStreamBlock`.
+</ParamField>
+
+<ParamField path="thank_you_text" type="RichTextField">
+  Message displayed after successful form submission.
+</ParamField>
+
+<ParamField path="form_fields" type="InlinePanel">
+  Form fields defined through `FormField` model. Added via InlinePanel.
+</ParamField>
+
+---
+
+## GalleryPage
+
+Page to display images from a selected Wagtail Collection.
+
+<Accordion title="Full Class Definition">
+```python
+class GalleryPage(Page):
+    """
+    This is a page to list locations from the selected Collection. We use a Q
+    object to list any Collection created (/admin/collections/) even if they
+    contain no items. In this demo we use it for a GalleryPage,
+    and is intended to show the extensibility of this aspect of Wagtail
+    """
+
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(), verbose_name="Page body", blank=True, use_json_field=True
+    )
+    collection = models.ForeignKey(
+        Collection,
+        limit_choices_to=~models.Q(name__in=["Root"]),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="Select the image collection for this gallery.",
+    )
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="collection" type="ForeignKey">
+  Wagtail Collection to display. Excludes the "Root" collection using `limit_choices_to`.
+</ParamField>
+
+### Page Hierarchy
+
+- **Subpage types**: None (empty array)
+
+---
+
+## FooterText
+
+Editable text snippet for the site footer.
+
+<Accordion title="Full Class Definition">
+```python
+class FooterText(
+    DraftStateMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    TranslatableMixin,
+    models.Model,
+):
+    """
+    This provides editable text for the site footer. Again it is registered
+    using `register_snippet` as a function in wagtail_hooks.py to be grouped
+    together with the Person model inside the same main menu item. It is made
+    accessible on the template via a template tag defined in base/templatetags/
+    navigation_tags.py
+    """
+
+    body = RichTextField()
+
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="footer_text",
+        for_concrete_model=False,
+    )
+```
+</Accordion>
+
+### Features
+
+- **TranslatableMixin**: Supports multi-language translations
+- **DraftStateMixin**: Draft/live workflow support
+- **RevisionMixin**: Revision history
+- **PreviewableMixin**: Preview functionality
+
+---
+
+## Settings Models
+
+### GenericSettings
+
+Site-wide generic settings.
+
+```python
+@register_setting(icon="cog")
+class GenericSettings(ClusterableModel, PreviewableMixin, BaseGenericSetting):
+    mastodon_url = models.URLField(verbose_name="Mastodon URL", blank=True)
+    github_url = models.URLField(verbose_name="GitHub URL", blank=True)
+    organisation_url = models.URLField(verbose_name="Organisation URL", blank=True)
+```
+
+### SiteSettings
+
+Site-specific settings.
+
+```python
+@register_setting(icon="site")
+class SiteSettings(BaseSiteSetting):
+    title_suffix = models.CharField(
+        verbose_name="Title suffix",
+        max_length=255,
+        help_text="The suffix for the title meta tag e.g. ' | The Wagtail Bakery'",
+        default="The Wagtail Bakery",
+    )
+```
+
+---
+
+## Custom Task: UserApprovalTask
+
+Custom workflow task requiring approval from a specific user.
+
+<Accordion title="Full Class Definition">
+```python
+class UserApprovalTask(Task):
+    """
+    Based on https://docs.wagtail.org/en/stable/extending/custom_tasks.html.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=False
+    )
+
+    admin_form_fields = Task.admin_form_fields + ["user"]
+
+    task_state_class = UserApprovalTaskState
+
+    # prevent editing of `user` after the task is created
+    admin_form_readonly_on_edit_fields = Task.admin_form_readonly_on_edit_fields + [
+        "user"
+    ]
+
+    def user_can_access_editor(self, page, user):
+        return user == self.user
+
+    def page_locked_for_user(self, page, user):
+        return user != self.user
+
+    def get_actions(self, page, user):
+        if user == self.user:
+            return [
+                ("approve", "Approve", False),
+                ("reject", "Reject", False),
+                ("cancel", "Cancel", False),
+            ]
+        else:
+            return []
+```
+</Accordion>
+
+Demonstrates Wagtail's custom task functionality where only a specific user can approve the task.
+
+---
+
+## Usage Example
+
+```python
+# Get all people
+from bakerydemo.base.models import Person, HomePage, FooterText
+
+people = Person.objects.filter(live=True)
+for person in people:
+    print(f"{person.first_name} {person.last_name} - {person.job_title}")
+
+# Access HomePage sections
+homepage = HomePage.objects.first()
+print(f"Hero: {homepage.hero_text}")
+print(f"CTA: {homepage.hero_cta}")
+
+# Get footer text
+footer = FooterText.objects.first()
+print(footer.body)
+```

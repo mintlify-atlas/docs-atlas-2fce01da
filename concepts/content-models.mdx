@@ -1,0 +1,630 @@
+---
+title: Content Models
+description: Understanding page models, snippets, and relationships in the Bakery Demo
+---
+
+Content models are the foundation of the Wagtail Bakery Demo. They define the structure of your content, from pages to reusable snippets, and how they relate to each other.
+
+## Page Models vs Snippets
+
+Wagtail distinguishes between two types of content models:
+
+<CardGroup cols={2}>
+  <Card title="Page Models" icon="file">
+    Content with a URL in the page tree. Examples: BlogPage, RecipePage, HomePage
+  </Card>
+  <Card title="Snippets" icon="puzzle-piece">
+    Reusable content without URLs. Examples: Person, BreadIngredient, FooterText
+  </Card>
+</CardGroup>
+
+## Page Models
+
+All page models inherit from `wagtail.models.Page`, which provides URL routing, permissions, versioning, and tree structure.
+
+### HomePage Model
+
+The root page with hero section, body content, and featured sections:
+
+```python
+from wagtail.models import Page
+from wagtail.fields import StreamField
+from wagtail.admin.panels import FieldPanel, MultiFieldPanel
+
+class HomePage(Page):
+    # Hero section
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    hero_text = models.CharField(
+        max_length=255, 
+        help_text="Write an introduction for the bakery"
+    )
+    hero_cta = models.CharField(
+        verbose_name="Hero CTA",
+        max_length=255,
+        help_text="Text to display on Call to Action",
+    )
+    hero_cta_link = models.ForeignKey(
+        "wagtailcore.Page",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    
+    # Body section
+    body = StreamField(
+        BaseStreamBlock(),
+        verbose_name="Home content block",
+        blank=True,
+        use_json_field=True,
+    )
+    
+    # Featured sections
+    featured_section_1 = models.ForeignKey(
+        "wagtailcore.Page",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+```
+
+<Note>
+  The HomePage demonstrates multiple content patterns: hero sections, StreamField body content, and page relationships for featured content.
+</Note>
+
+### BlogPage Model
+
+Blog posts with authors, tags, and rich content:
+
+```python
+from modelcluster.contrib.taggit import ClusterTaggableManager
+from taggit.models import TaggedItemBase
+
+class BlogPage(Page):
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    body = StreamField(
+        BaseStreamBlock(), 
+        verbose_name="Page body", 
+        blank=True, 
+        use_json_field=True
+    )
+    subtitle = models.CharField(blank=True, max_length=255)
+    tags = ClusterTaggableManager(through=BlogPageTag, blank=True)
+    date_published = models.DateField("Date article published", blank=True, null=True)
+    
+    content_panels = Page.content_panels + [
+        FieldPanel("subtitle"),
+        FieldPanel("introduction"),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        FieldPanel("date_published"),
+        MultipleChooserPanel(
+            "blog_person_relationship",
+            chooser_field_name="person",
+            heading="Authors",
+            label="Author",
+            min_num=1,
+        ),
+        FieldPanel("tags"),
+    ]
+    
+    # Restrict parent and child page types
+    parent_page_types = ["BlogIndexPage"]
+    subpage_types = []
+    
+    def authors(self):
+        """Returns the BlogPage's related people."""
+        return [
+            n.person
+            for n in self.blog_person_relationship.filter(
+                person__live=True
+            ).select_related("person")
+        ]
+```
+
+### BreadPage Model
+
+Bread catalog entries with ingredients and origin:
+
+```python
+from modelcluster.fields import ParentalManyToManyField
+
+class BreadPage(Page):
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    body = StreamField(
+        BaseStreamBlock(), 
+        verbose_name="Page body", 
+        blank=True, 
+        use_json_field=True
+    )
+    origin = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    bread_type = models.ForeignKey(
+        "breads.BreadType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    ingredients = ParentalManyToManyField("BreadIngredient", blank=True)
+    
+    parent_page_types = ["BreadsIndexPage"]
+    
+    @property
+    def ordered_ingredients(self):
+        """Return ingredients ordered by sort_order, then name."""
+        return self.ingredients.order_by("sort_order", "name")
+```
+
+<Note>
+  BreadPage uses `ParentalManyToManyField` for ingredients, allowing multiple ingredients per bread while maintaining the relationship in the page's draft state.
+</Note>
+
+### RecipePage Model
+
+Recipe pages with advanced StreamField configuration:
+
+```python
+class RecipePage(Page):
+    date_published = models.DateField("Date article published", blank=True, null=True)
+    subtitle = models.CharField(blank=True, max_length=255)
+    introduction = models.TextField(blank=True, max_length=500)
+    
+    # StreamField with block_counts to limit certain blocks
+    backstory = StreamField(
+        BaseStreamBlock(),
+        block_counts={
+            "heading_block": {"max_num": 1},
+            "image_block": {"max_num": 1},
+            "embed_block": {"max_num": 1},
+        },
+        blank=True,
+        use_json_field=True,
+        help_text="Use only a minimum number of headings and large blocks.",
+    )
+    
+    # Rich text with limited features
+    recipe_headline = RichTextField(
+        blank=True,
+        max_length=120,
+        features=["bold", "italic", "link"],
+        help_text="Keep to a single line",
+    )
+    
+    # Custom StreamBlock with recipe-specific blocks
+    body = StreamField(
+        RecipeStreamBlock(),
+        blank=True,
+        use_json_field=True,
+    )
+    
+    parent_page_types = ["RecipeIndexPage"]
+    subpage_types = []
+```
+
+### LocationPage Model
+
+Bakery locations with operating hours and map integration:
+
+```python
+from django.core.validators import RegexValidator
+
+class LocationPage(Page):
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    body = StreamField(
+        BaseStreamBlock(), 
+        verbose_name="Page body", 
+        blank=True, 
+        use_json_field=True
+    )
+    address = models.TextField()
+    lat_long = models.CharField(
+        max_length=36,
+        help_text="Comma separated lat/long. (Ex. 64.144367, -21.939182)",
+        validators=[
+            RegexValidator(
+                regex=r"^(\-?\d+(\.\d+)?),\s*(\-?\d+(\.\d+)?)$",
+                message="Lat Long must be a comma-separated numeric lat and long",
+            ),
+        ],
+    )
+    
+    content_panels = [
+        FieldPanel("title"),
+        FieldPanel("introduction"),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        FieldPanel("address"),
+        FieldPanel("lat_long"),
+        InlinePanel("hours_of_operation", heading="Hours of Operation", label="Slot"),
+    ]
+    
+    parent_page_types = ["LocationsIndexPage"]
+    
+    def is_open(self):
+        """Determines if the location is currently open."""
+        now = datetime.now()
+        current_time = now.time()
+        current_day = now.strftime("%a").upper()
+        try:
+            self.operating_hours.get(
+                day=current_day,
+                opening_time__lte=current_time,
+                closing_time__gte=current_time,
+                closed=False,
+            )
+            return True
+        except LocationOperatingHours.DoesNotExist:
+            return False
+```
+
+## Index Page Pattern
+
+Index pages list their children and provide filtering/pagination:
+
+```python
+class BlogIndexPage(RoutablePageMixin, Page):
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    
+    subpage_types = ["BlogPage"]  # Only BlogPage can be a child
+    
+    def children(self):
+        return self.get_children().specific().live()
+    
+    def get_context(self, request):
+        context = super().get_context(request)
+        context["posts"] = (
+            BlogPage.objects.descendant_of(self).live().order_by("-date_published")
+        )
+        return context
+```
+
+## Snippet Models
+
+Snippets are reusable content pieces without URLs.
+
+### Person Snippet
+
+Represents authors and staff members:
+
+```python
+from wagtail.models import (
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    WorkflowMixin,
+)
+from modelcluster.models import ClusterableModel
+
+class Person(
+    WorkflowMixin,
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    index.Indexed,
+    ClusterableModel,
+):
+    first_name = models.CharField("First name", max_length=254)
+    last_name = models.CharField("Last name", max_length=254)
+    job_title = models.CharField("Job title", max_length=254)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    
+    panels = [
+        MultiFieldPanel(
+            [
+                FieldRowPanel(
+                    [
+                        FieldPanel("first_name"),
+                        FieldPanel("last_name"),
+                    ]
+                )
+            ],
+            "Name",
+        ),
+        FieldPanel("job_title"),
+        FieldPanel("image"),
+        PublishingPanel(),
+    ]
+    
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
+```
+
+<Note>
+  The Person snippet uses multiple mixins to provide draft/publish workflow, locking, revisions, and preview functionality.
+</Note>
+
+### BreadIngredient Snippet
+
+```python
+class BreadIngredient(Orderable, DraftStateMixin, RevisionMixin, models.Model):
+    name = models.CharField(max_length=255)
+    
+    panels = [FieldPanel("name")]
+    
+    def __str__(self):
+        return self.name
+    
+    class Meta:
+        verbose_name = "bread ingredient"
+        verbose_name_plural = "bread ingredients"
+        ordering = ["sort_order", "name"]
+```
+
+### Country Snippet
+
+```python
+class Country(models.Model):
+    title = models.CharField(max_length=100)
+    sort_order = models.IntegerField(null=True, blank=True, db_index=True)
+    
+    def __str__(self):
+        return self.title
+    
+    class Meta:
+        verbose_name = "country of origin"
+        verbose_name_plural = "countries of origin"
+```
+
+## Model Relationships
+
+Wagtail Bakery Demo demonstrates several relationship patterns:
+
+### ParentalKey Relationships
+
+Used for inline models that should save atomically with their parent:
+
+```python
+class BlogPersonRelationship(Orderable, models.Model):
+    """Links BlogPage to Person (authors)."""
+    page = ParentalKey(
+        "BlogPage", 
+        related_name="blog_person_relationship", 
+        on_delete=models.CASCADE
+    )
+    person = models.ForeignKey(
+        "base.Person", 
+        related_name="person_blog_relationship", 
+        on_delete=models.CASCADE
+    )
+    panels = [FieldPanel("person")]
+```
+
+<Steps>
+  <Step title="Create Relationship Model">
+    Inherit from `Orderable` to enable drag-and-drop ordering and define the relationship with `ParentalKey`.
+  </Step>
+  <Step title="Add to Parent Model">
+    Use `InlinePanel` or `MultipleChooserPanel` in the parent's `content_panels` to enable editing.
+  </Step>
+  <Step title="Access in Templates">
+    Use the `related_name` to access related objects: `{% for relationship in page.blog_person_relationship.all %}`
+  </Step>
+</Steps>
+
+### ForeignKey Relationships
+
+Standard Django one-to-many relationships:
+
+```python
+class BreadPage(Page):
+    # One bread has one country of origin
+    origin = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    
+    # One bread has one bread type
+    bread_type = models.ForeignKey(
+        "breads.BreadType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",  # Avoid reverse relationship
+    )
+```
+
+<Note>
+  Use `related_name="+"` to prevent Django from creating a reverse relationship when it's not needed.
+</Note>
+
+### ParentalManyToManyField
+
+Many-to-many relationships that work with Wagtail's draft/publish workflow:
+
+```python
+from modelcluster.fields import ParentalManyToManyField
+
+class BreadPage(Page):
+    ingredients = ParentalManyToManyField("BreadIngredient", blank=True)
+    
+    content_panels = Page.content_panels + [
+        MultiFieldPanel(
+            [
+                FieldPanel(
+                    "ingredients",
+                    widget=forms.CheckboxSelectMultiple,
+                ),
+            ],
+            heading="Additional Metadata",
+        ),
+    ]
+```
+
+## API Fields
+
+Models can expose fields through Wagtail's API:
+
+```python
+from wagtail.api import APIField
+
+class BlogPage(Page):
+    api_fields = [
+        APIField("introduction"),
+        APIField("image"),
+        APIField("body"),
+        APIField("subtitle"),
+        APIField("tags"),
+        APIField("date_published"),
+        APIField("blog_person_relationship"),
+    ]
+```
+
+Access via API:
+
+```bash
+GET /api/v2/pages/?type=blog.BlogPage&fields=*
+```
+
+## Search Configuration
+
+Models define which fields are searchable:
+
+```python
+from wagtail.search import index
+
+class BlogPage(Page):
+    search_fields = Page.search_fields + [
+        index.SearchField("body"),           # Full-text search
+        index.SearchField("introduction"),
+        index.FilterField("date_published"), # Filtering
+        index.AutocompleteField("title"),    # Autocomplete
+    ]
+```
+
+## Content Panels
+
+Define the admin interface for editing:
+
+```python
+class HomePage(Page):
+    content_panels = Page.content_panels + [
+        MultiFieldPanel(
+            [
+                FieldPanel("image"),
+                FieldPanel("hero_text"),
+                MultiFieldPanel(
+                    [
+                        FieldPanel("hero_cta"),
+                        FieldPanel("hero_cta_link"),
+                    ]
+                ),
+            ],
+            heading="Hero section",
+        ),
+        FieldPanel("body"),
+        MultiFieldPanel(
+            [
+                FieldPanel("featured_section_1_title"),
+                FieldPanel("featured_section_1"),
+            ],
+            heading="Featured sections",
+        ),
+    ]
+```
+
+<Accordion title="Available Panel Types">
+  - `FieldPanel`: Single field
+  - `MultiFieldPanel`: Group related fields
+  - `InlinePanel`: Inline editing of related models
+  - `MultipleChooserPanel`: Select multiple related items
+  - `FieldRowPanel`: Horizontal layout for fields
+  - `HelpPanel`: Display help text
+  - `PublishingPanel`: Draft/publish controls
+</Accordion>
+
+## Model Customization
+
+<Tabs>
+  <Tab title="Page Type Restrictions">
+    Control which pages can be parents or children:
+    ```python
+    class BlogPage(Page):
+        parent_page_types = ["BlogIndexPage"]
+        subpage_types = []  # No children allowed
+    ```
+  </Tab>
+  
+  <Tab title="Context Methods">
+    Add data to template context:
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        context["related_posts"] = BlogPage.objects.live()[:5]
+        return context
+    ```
+  </Tab>
+  
+  <Tab title="Custom Properties">
+    Add computed properties:
+    ```python
+    @property
+    def is_open(self):
+        # Business logic here
+        return True
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Learn about overall architecture
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/concepts/project-structure">
+    Explore directory layout
+  </Card>
+  <Card title="StreamField Blocks" icon="cubes" href="/concepts/streamfield-blocks">
+    Understand content blocks
+  </Card>
+</CardGroup>

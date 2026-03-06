@@ -1,0 +1,264 @@
+---
+title: 'reset_demo'
+description: 'Reset the demo database to its initial state'
+icon: 'rotate-left'
+---
+
+## Overview
+
+The `reset_demo` management command completely resets the Wagtail Bakery Demo to its initial state. This is a destructive operation that drops all database tables, removes media files, rebuilds the schema, and reloads the initial fixture data.
+
+<Warning>
+**This is a destructive command!** It will permanently delete:
+- All database content (pages, snippets, users, images, etc.)
+- All media files (from local storage or S3)
+- All cached data
+
+Only use this command when you want to completely reset the demo environment.
+</Warning>
+
+## Usage
+
+```bash
+python manage.py reset_demo
+```
+
+## Command Arguments
+
+This command does not accept any arguments or options. It runs non-interactively and does not prompt for confirmation.
+
+## Database Requirements
+
+<Warning>
+This command **only works with PostgreSQL databases**. It will raise an error if used with SQLite, MySQL, or other database backends.
+</Warning>
+
+The command checks the database engine and raises a `CommandError` if PostgreSQL is not detected:
+
+```python
+if settings.DATABASES[DEFAULT_DB_ALIAS]["ENGINE"] not in POSTGRESQL_ENGINES:
+    raise CommandError(
+        "This command can be used only with PostgreSQL databases."
+    )
+```
+
+## What It Does
+
+The command executes a complete reset sequence:
+
+<Steps>
+  <Step title="Remove Media Files">
+    Removes all media files from storage:
+    - **If using S3**: Deletes all objects from the S3 bucket
+    - **If using local storage**: Deletes all Image and Document model instances
+  </Step>
+  
+  <Step title="Reset Database Schema">
+    Drops all database tables using `reset_schema` command (requires `django-extensions`)
+  </Step>
+  
+  <Step title="Run Migrations">
+    Rebuilds all database tables by running migrations from scratch
+  </Step>
+  
+  <Step title="Clear All Caches">
+    Clears all configured Django cache backends
+  </Step>
+  
+  <Step title="Load Initial Data">
+    Calls `load_initial_data` to restore the default demo content and media files
+  </Step>
+  
+  <Step title="Reset Admin Password">
+    Calls `reset_admin_password` to ensure the admin password matches the environment configuration
+  </Step>
+</Steps>
+
+## Example Usage
+
+### Reset Development Environment
+
+```bash
+$ python manage.py reset_demo
+Removing images
+Removing documents
+Reset schema
+Operations to perform:
+  Apply all migrations: admin, auth, contenttypes, sessions, ...
+Running migrations:
+  Applying contenttypes.0001_initial... OK
+  Applying auth.0001_initial... OK
+  ...
+Copying media files to configured storage...
+Awesome. Your data is loaded! The bakery's doors are almost ready to open...
+```
+
+### Reset Before Demo or Testing
+
+```bash
+# Reset to clean state
+python manage.py reset_demo
+
+# Optionally add random test data
+python manage.py create_random_data 50 25 100
+```
+
+## Source Code Location
+
+`bakerydemo/base/management/commands/reset_demo.py`
+
+## Dependencies
+
+This command depends on:
+
+<ParamField path="django-extensions" type="package" required>
+  Provides the `reset_schema` command for dropping all database tables. This must be installed and added to `INSTALLED_APPS`.
+</ParamField>
+
+<ParamField path="PostgreSQL" type="database" required>
+  The command only works with PostgreSQL databases due to the `reset_schema` requirement.
+</ParamField>
+
+## Storage Backend Handling
+
+### AWS S3 Storage
+
+If using S3 (detected by checking if "s3" is in the storage class name), the command deletes all objects:
+
+```python
+if "s3" in default_storage.__class__.__name__.lower():
+    self.stdout.write("Removing files from S3")
+    default_storage.bucket.objects.all().delete()
+```
+
+### Local File Storage
+
+For local storage, the command deletes database records for images and documents:
+
+```python
+self.stdout.write("Removing images")
+get_image_model().objects.all().delete()
+
+self.stdout.write("Removing documents")
+get_document_model().objects.all().delete()
+```
+
+<Note>
+With local storage, the physical media files may remain on disk even though database records are deleted. The `load_initial_data` command will repopulate the media directory.
+</Note>
+
+## Workflow Integration
+
+This command is commonly used in deployment and maintenance workflows:
+
+### Deployment Reset Script
+
+```bash
+#!/bin/bash
+# reset-and-deploy.sh
+
+set -e
+
+echo "Resetting demo environment..."
+python manage.py reset_demo
+
+echo "Creating additional test data..."
+python manage.py create_random_data 20 10 40
+
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
+
+echo "Demo reset complete!"
+```
+
+### Scheduled Reset (Cron)
+
+```cron
+# Reset demo every night at 2 AM
+0 2 * * * cd /path/to/bakerydemo && python manage.py reset_demo
+```
+
+## Error Handling
+
+### PostgreSQL Required Error
+
+```bash
+django.core.management.base.CommandError: 
+This command can be used only with PostgreSQL databases.
+```
+
+**Solution**: This command only works with PostgreSQL. Use `load_initial_data` with SQLite instead, or switch to PostgreSQL.
+
+### Missing django-extensions
+
+```bash
+django.core.management.base.CommandError: 
+Unknown command: 'reset_schema'
+```
+
+**Solution**: Install django-extensions and add it to `INSTALLED_APPS`:
+
+```bash
+pip install django-extensions
+```
+
+```python
+# settings.py
+INSTALLED_APPS = [
+    # ...
+    'django_extensions',
+]
+```
+
+## Safety Considerations
+
+<Warning>
+**Production Warning**: Never use this command in production environments. It will delete all data permanently.
+</Warning>
+
+Best practices:
+
+1. **Only use in development/demo environments**
+2. **Backup important data** before running if needed
+3. **Verify database connection** points to correct environment
+4. **Check `DJANGO_SETTINGS_MODULE`** environment variable
+5. **Consider using separate demo database** from production
+
+## Related Commands
+
+- [`load_initial_data`](/api/commands/load-initial-data) - Load initial fixture data without reset
+- [`create_random_data`](/api/commands/create-random-data) - Add test data after reset
+- [`reset_admin_password`](/api/commands/reset-admin-password) - Reset admin password only
+
+## Alternative Approaches
+
+### Soft Reset (SQLite Compatible)
+
+For SQLite or less destructive reset:
+
+```bash
+# Delete database file (SQLite only)
+rm db.sqlite3
+
+# Rebuild
+python manage.py migrate
+python manage.py load_initial_data
+```
+
+### Partial Reset
+
+To reset only content without schema changes:
+
+```bash
+# Clear pages
+python manage.py shell -c "from wagtail.models import Page; Page.objects.filter(depth__gt=2).delete()"
+
+# Reload data
+python manage.py load_initial_data
+```
+
+## See Also
+
+- [django-extensions documentation](https://django-extensions.readthedocs.io/)
+- [PostgreSQL best practices](https://www.postgresql.org/docs/current/)
+- [Wagtail content management](https://docs.wagtail.org/en/stable/)

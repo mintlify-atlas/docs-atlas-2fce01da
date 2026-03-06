@@ -1,0 +1,328 @@
+---
+title: Architecture
+description: Understanding the Django and Wagtail architecture in the Bakery Demo project
+---
+
+The Wagtail Bakery Demo is built on Django and Wagtail CMS, following Django's Model-View-Template (MVT) architecture pattern with Wagtail-specific enhancements for content management.
+
+## Django Foundation
+
+The project is built on Django, a high-level Python web framework that follows the MVT pattern:
+
+- **Models**: Define data structure and business logic
+- **Views**: Handle request/response logic
+- **Templates**: Render HTML with dynamic content
+- **URLs**: Map URL patterns to views
+
+### Project Entry Point
+
+The project starts with `manage.py`, which loads the Django settings module:
+
+```python
+import os
+import sys
+import dotenv
+
+if __name__ == "__main__":
+    dotenv.load_dotenv()
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "bakerydemo.settings.dev")
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(sys.argv)
+```
+
+## Wagtail CMS Layer
+
+Wagtail extends Django with a powerful content management system that provides:
+
+- **Page Models**: Hierarchical content structure with a tree-based page system
+- **StreamField**: Flexible content blocks for rich page layouts
+- **Snippets**: Reusable content pieces (like People, Footer Text)
+- **Admin Interface**: Beautiful, user-friendly editing experience
+- **API**: Built-in REST API for headless CMS usage
+
+### Page Hierarchy
+
+All content pages inherit from `wagtail.models.Page`, creating a tree structure:
+
+```
+HomePage (root)
+├── BlogIndexPage
+│   └── BlogPage (multiple)
+├── BreadsIndexPage
+│   └── BreadPage (multiple)
+├── RecipeIndexPage
+│   └── RecipePage (multiple)
+├── LocationsIndexPage
+│   └── LocationPage (multiple)
+└── StandardPage
+```
+
+## Application Architecture
+
+The Bakery Demo is organized into Django apps, each handling a specific domain:
+
+<CardGroup cols={2}>
+  <Card title="base" icon="house">
+    Core functionality, shared blocks, HomePage, StandardPage, and common models like Person
+  </Card>
+  <Card title="blog" icon="newspaper">
+    Blog functionality with BlogPage and BlogIndexPage models
+  </Card>
+  <Card title="breads" icon="bread-slice">
+    Bread catalog with BreadPage, ingredients, and countries of origin
+  </Card>
+  <Card title="recipes" icon="utensils">
+    Recipe pages with advanced StreamField blocks for ingredients and steps
+  </Card>
+  <Card title="locations" icon="map-pin">
+    Bakery location pages with operating hours and map integration
+  </Card>
+  <Card title="people" icon="users">
+    Person snippet model shared across blog posts and recipes
+  </Card>
+  <Card title="search" icon="magnifying-glass">
+    Search functionality across all content types
+  </Card>
+</CardGroup>
+
+## URL Routing
+
+The project uses a layered URL routing system defined in `bakerydemo/urls.py`:
+
+```python
+urlpatterns = [
+    path("django-admin/", admin.site.urls),
+    path("admin/", include(wagtailadmin_urls)),
+    path("documents/", include(wagtaildocs_urls)),
+    path("search/", search_views.search, name="search"),
+    path("sitemap.xml", sitemap),
+    path("api/v2/", api_router.urls),
+    path("", include(wagtail_urls)),  # Catch-all for Wagtail pages
+]
+```
+
+<Note>
+The Wagtail URLs pattern (`path("", include(wagtail_urls))`) must come last as it acts as a catch-all, routing requests based on the page tree structure.
+</Note>
+
+## How Apps Work Together
+
+### 1. Shared Content with Relationships
+
+Apps are interconnected through Django's relationship fields:
+
+```python
+# Blog app references Person from base app
+class BlogPersonRelationship(Orderable, models.Model):
+    page = ParentalKey(
+        "BlogPage", 
+        related_name="blog_person_relationship", 
+        on_delete=models.CASCADE
+    )
+    person = models.ForeignKey(
+        "base.Person", 
+        related_name="person_blog_relationship", 
+        on_delete=models.CASCADE
+    )
+```
+
+### 2. Shared StreamField Blocks
+
+The `base` app defines `BaseStreamBlock` used across multiple apps:
+
+```python
+from bakerydemo.base.blocks import BaseStreamBlock
+
+# Used in blog, breads, locations, and standard pages
+body = StreamField(
+    BaseStreamBlock(), 
+    verbose_name="Page body", 
+    blank=True, 
+    use_json_field=True
+)
+```
+
+### 3. API Integration
+
+All apps expose their content through a unified API defined in `api.py`:
+
+```python
+from wagtail.api.v2.router import WagtailAPIRouter
+from wagtail.api.v2.views import PagesAPIViewSet
+
+api_router = WagtailAPIRouter("wagtailapi")
+api_router.register_endpoint("pages", PagesAPIViewSet)
+api_router.register_endpoint("images", ImagesAPIViewSet)
+api_router.register_endpoint("documents", DocumentsAPIViewSet)
+```
+
+## Settings Architecture
+
+Settings are organized hierarchically in `bakerydemo/settings/`:
+
+<Steps>
+  <Step title="base.py">
+    Contains common settings used across all environments:
+    - Installed apps
+    - Middleware configuration
+    - Database settings
+    - Static/media file configuration
+    - Wagtail-specific settings
+  </Step>
+  
+  <Step title="dev.py">
+    Development-specific settings:
+    - Debug mode enabled
+    - Development database configuration
+    - Debug toolbar settings
+  </Step>
+  
+  <Step title="production.py">
+    Production-specific settings:
+    - Security settings
+    - Performance optimizations
+    - Production database configuration
+    - Cloud storage settings
+  </Step>
+  
+  <Step title="test.py">
+    Test environment settings:
+    - Fast password hashers
+    - Test database configuration
+  </Step>
+</Steps>
+
+## Installed Apps Configuration
+
+The `INSTALLED_APPS` in `settings/base.py` shows the layered architecture:
+
+```python
+INSTALLED_APPS = [
+    # Project apps
+    "bakerydemo.base",
+    "bakerydemo.blog",
+    "bakerydemo.breads",
+    "bakerydemo.locations",
+    "bakerydemo.recipes",
+    "bakerydemo.search",
+    "bakerydemo.people",
+    
+    # Wagtail apps
+    "wagtail.embeds",
+    "wagtail.sites",
+    "wagtail.users",
+    "wagtail.snippets",
+    "wagtail.documents",
+    "wagtail.images",
+    "wagtail.search",
+    "wagtail.admin",
+    "wagtail.api.v2",
+    "wagtail",
+    
+    # Third-party apps
+    "rest_framework",
+    "modelcluster",
+    "taggit",
+    
+    # Django apps
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+]
+```
+
+## Database Architecture
+
+The project supports multiple database backends:
+
+```python
+if "DATABASE_URL" in os.environ:
+    # Production: Use environment variable
+    DATABASES = {"default": dj_database_url.config(conn_max_age=500)}
+else:
+    # Development: Use SQLite
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.path.join(BASE_DIR, "bakerydemodb"),
+        }
+    }
+```
+
+<Note>
+  SQLite is used for development and PostgreSQL is recommended for production.
+</Note>
+
+## Search Architecture
+
+Wagtail provides a unified search interface:
+
+```python
+WAGTAILSEARCH_BACKENDS = {
+    "default": {
+        "BACKEND": "wagtail.search.backends.database",
+        "INDEX": "bakerydemo",
+    },
+}
+```
+
+Models define searchable fields:
+
+```python
+class BlogPage(Page):
+    search_fields = Page.search_fields + [
+        index.SearchField("body"),
+    ]
+```
+
+## Key Architectural Patterns
+
+<Accordion title="Model Inheritance">
+  All page models inherit from `wagtail.models.Page`, which provides:
+  - URL routing
+  - Permission management
+  - Version control
+  - Page tree structure
+  - SEO fields
+</Accordion>
+
+<Accordion title="ParentalKey Relationships">
+  Used for inline relationships that should be saved atomically with the parent:
+  ```python
+  page = ParentalKey(
+      "BlogPage",
+      related_name="blog_person_relationship",
+      on_delete=models.CASCADE
+  )
+  ```
+</Accordion>
+
+<Accordion title="Snippets vs Pages">
+  - **Pages**: Hierarchical content with URLs (BlogPage, RecipePage)
+  - **Snippets**: Reusable content without URLs (Person, FooterText, BreadIngredient)
+</Accordion>
+
+<Accordion title="StreamField Pattern">
+  Flexible content composition using blocks:
+  - Define block types in `blocks.py`
+  - Combine blocks into StreamBlock classes
+  - Add StreamField to models
+  - Render with templates
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Project Structure" icon="folder-tree" href="/concepts/project-structure">
+    Explore the directory layout and key files
+  </Card>
+  <Card title="Content Models" icon="database" href="/concepts/content-models">
+    Learn about page models and their relationships
+  </Card>
+  <Card title="StreamField Blocks" icon="cubes" href="/concepts/streamfield-blocks">
+    Understand flexible content blocks
+  </Card>
+</CardGroup>

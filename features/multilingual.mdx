@@ -1,0 +1,149 @@
+---
+title: Multilingual Support
+description: Multi-language content management with Wagtail's i18n features
+---
+
+The Wagtail Bakery Demo showcases full internationalization (i18n) support, allowing content to be created and managed in multiple languages.
+
+## Configuration
+
+### Enabling i18n
+
+Multilingual support is enabled in the settings through `WAGTAIL_I18N_ENABLED`:
+
+```python settings/base.py
+WAGTAIL_I18N_ENABLED = True
+```
+
+### Supported Languages
+
+The demo supports three languages configured via `WAGTAIL_CONTENT_LANGUAGES`:
+
+```python settings/base.py
+WAGTAIL_CONTENT_LANGUAGES = LANGUAGES = [
+    ("en", "English"),
+    ("de", "Deutsch"),
+    ("ar", "العربيّة"),
+]
+```
+
+<Note>
+  The `WAGTAIL_CONTENT_LANGUAGES` setting defines which languages are available for content creation in the Wagtail admin interface.
+</Note>
+
+## Translation Features
+
+<Steps>
+  <Step title="Enable Simple Translation">
+    The demo uses `wagtail.contrib.simple_translation` for streamlined translation workflows:
+
+    ```python settings/base.py
+    INSTALLED_APPS = [
+        # ... other apps
+        "wagtail.contrib.simple_translation",
+        # ...
+    ]
+    ```
+  </Step>
+
+  <Step title="Locale Support">
+    Wagtail's locale management is enabled through:
+
+    ```python settings/base.py
+    INSTALLED_APPS = [
+        # ... other apps
+        "wagtail.locales",
+        # ...
+    ]
+    ```
+  </Step>
+
+  <Step title="TranslatableMixin for Models">
+    Models like `FooterText` inherit from `TranslatableMixin` to support translations:
+
+    ```python base/models.py
+    class FooterText(
+        DraftStateMixin,
+        RevisionMixin,
+        PreviewableMixin,
+        TranslatableMixin,
+        models.Model,
+    ):
+        body = RichTextField()
+        
+        class Meta(TranslatableMixin.Meta):
+            verbose_name = "footer text"
+            verbose_name_plural = "footer text"
+    ```
+  </Step>
+</Steps>
+
+## How It Works
+
+### Page Translation
+
+All Wagtail pages automatically support translation when `WAGTAIL_I18N_ENABLED` is set to `True`. Editors can:
+
+- Create translated versions of pages through the admin interface
+- Switch between language versions
+- Manage locale-specific content independently
+
+### Snippet Translation
+
+Snippets that inherit from `TranslatableMixin` can be translated:
+
+```python
+from wagtail.models import TranslatableMixin
+
+class FooterText(TranslatableMixin, models.Model):
+    body = RichTextField()
+    
+    class Meta(TranslatableMixin.Meta):
+        verbose_name = "footer text"
+```
+
+## Admin Interface
+
+With i18n enabled, the Wagtail admin provides:
+
+- **Language switcher** in the page editor
+- **Locale management** interface at `/admin/locales/`
+- **Translation workflows** using the Simple Translation contrib module
+- **Locale-specific page trees** for organizing content
+
+<Accordion title="Advanced: Locale-Specific Content">
+  When a page is translated, Wagtail creates a new page instance for each locale. This means:
+  
+  - Each language version can have different content, including different StreamField blocks
+  - Page slugs can be customized per locale
+  - Publication status is managed independently per locale
+  - Translations are linked together through Wagtail's locale system
+</Accordion>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use TranslatableMixin" icon="language">
+    Apply `TranslatableMixin` to snippets and models that need translation support.
+  </Card>
+  <Card title="Test All Locales" icon="check">
+    Ensure your content and templates work correctly in all configured languages, especially right-to-left languages like Arabic.
+  </Card>
+  <Card title="Locale-Specific URLs" icon="link">
+    Pages automatically get locale-specific URLs (e.g., `/en/about/`, `/de/about/`).
+  </Card>
+  <Card title="Simple Translation" icon="arrows-rotate">
+    Use the Simple Translation contrib module for streamlined translation workflows in the admin.
+  </Card>
+</CardGroup>
+
+## Related Settings
+
+```python settings/base.py
+LANGUAGE_CODE = "en-us"
+USE_I18N = True
+```
+
+<Note>
+  Django's `USE_I18N` setting must be `True` for Wagtail's i18n features to work properly.
+</Note>

@@ -1,0 +1,544 @@
+---
+title: 'Contributing'
+description: 'How to contribute to the Wagtail Bakery Demo project'
+icon: 'code-pull-request'
+---
+
+We love pull requests from everyone! The Bakery Demo is an open-source project maintained by the Wagtail community, and contributions of all kinds are welcome.
+
+## Code of Conduct
+
+By participating in this project, you agree to abide by the Wagtail [Code of Conduct](https://github.com/wagtail/wagtail/blob/master/CODE_OF_CONDUCT.md).
+
+## Getting Started
+
+<Steps>
+  <Step title="Fork the Repository">
+    If you don't have write access to the repo, start by forking it:
+
+    ```bash
+    # Fork on GitHub, then clone your fork
+    git clone git@github.com:your-username/bakerydemo.git
+    cd bakerydemo
+    ```
+
+    <Note>
+    If you have write access, you can clone the main repository directly.
+    </Note>
+  </Step>
+
+  <Step title="Set Up Development Environment">
+    Follow the [development setup guide](/development/setup) to configure your local environment:
+
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    pip install -r requirements/development.txt
+    cp bakerydemo/settings/local.py.example bakerydemo/settings/local.py
+    cp .env.example .env
+    ./manage.py migrate
+    ./manage.py load_initial_data
+    ```
+  </Step>
+
+  <Step title="Create a Branch">
+    Create a feature branch for your changes:
+
+    ```bash
+    git checkout -b feature/your-feature-name
+    # or
+    git checkout -b fix/your-bug-fix
+    ```
+
+    <Note>
+    Use descriptive branch names like `feature/add-recipe-model` or `fix/broken-image-upload`
+    </Note>
+  </Step>
+
+  <Step title="Make Your Changes">
+    Write your code following the project's coding standards (see below).
+  </Step>
+
+  <Step title="Test Your Changes">
+    Run tests to ensure nothing is broken:
+
+    ```bash
+    # Run all tests
+    ./manage.py test
+
+    # Run specific app tests
+    ./manage.py test bakerydemo.blog
+
+    # Run with coverage
+    coverage run --source='.' manage.py test
+    coverage report
+    ```
+  </Step>
+
+  <Step title="Commit Your Changes">
+    Commit with clear, descriptive messages:
+
+    ```bash
+    git add .
+    git commit -m "Add recipe search functionality
+
+    - Implement search backend for recipes
+    - Add search filters for ingredients
+    - Update tests
+
+    Closes #123"
+    ```
+
+    <Accordion title="Commit Message Guidelines">
+      **Good commit messages:**
+      - Use present tense ("Add feature" not "Added feature")
+      - Use imperative mood ("Move cursor to..." not "Moves cursor to...")
+      - First line is a summary (50 chars or less)
+      - Include detailed explanation after a blank line if needed
+      - Reference issues and PRs with `#number`
+      - Use `Closes #123` or `Fixes #123` to automatically close issues
+
+      **Example:**
+      ```
+      Fix broken image upload in blog posts
+
+      The image upload was failing due to incorrect MIME type validation.
+      Updated the validation logic to accept all standard image formats.
+
+      Fixes #456
+      ```
+    </Accordion>
+  </Step>
+
+  <Step title="Push and Create Pull Request">
+    Push your branch and create a pull request:
+
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+
+    Then visit GitHub and [create a pull request](https://github.com/wagtail/bakerydemo/compare/) with:
+    - Clear description of changes
+    - Reference to related issues
+    - Screenshots for UI changes
+    - Test results or coverage information
+  </Step>
+</Steps>
+
+## Development Workflow
+
+### For Contributors Without Write Access
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes and commit
+4. Push to your fork
+5. Submit a pull request
+6. Wait for review and address feedback
+
+### For Contributors With Write Access
+
+<Note>
+If you have write access, use your best judgement about committing directly to master. All non-trivial development should be done on a branch.
+</Note>
+
+**Work in Progress PRs:**
+
+1. Create a PR that's not ready for review
+2. Assign the **work in progress** label
+3. When ready for review:
+   - Remove **work in progress** label
+   - Assign **needs review** label
+
+**Direct Commits:**
+
+Okay for:
+- Typo fixes
+- Documentation updates
+- Minor style adjustments
+- Dependency updates (with testing)
+
+Require branches/PRs:
+- New features
+- Refactoring
+- Breaking changes
+- Significant bug fixes
+
+## Coding Standards
+
+### Python Code Style
+
+The project uses [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
+
+**Configuration:** `ruff.toml`
+
+```toml
+line-length = 88
+target-version = "py310"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+```
+
+**Run Ruff:**
+
+```bash
+# Check for issues
+ruff check .
+
+# Auto-fix issues
+ruff check --fix .
+
+# Format code
+ruff format .
+```
+
+### Template Style
+
+The project uses:
+- **djhtml** for Django template formatting
+- **curlylint** for template linting
+
+```bash
+# Format templates
+djhtml bakerydemo/
+
+# Lint templates
+curlylint bakerydemo/
+```
+
+### JavaScript/CSS Style
+
+The project uses:
+- **ESLint** for JavaScript linting
+- **Prettier** for code formatting
+- **Stylelint** for CSS linting
+
+```bash
+# Install Node dependencies
+npm install
+
+# Lint JavaScript
+npm run lint:js
+
+# Format code
+npm run format
+
+# Lint CSS
+npm run lint:css
+```
+
+### Pre-commit Hooks
+
+The project uses [pre-commit](https://pre-commit.com/) to run checks before commits.
+
+**Setup:**
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+
+# Run manually on all files
+pre-commit run --all-files
+```
+
+**Configuration:** `.pre-commit-config.yaml`
+
+The hooks automatically:
+- Format Python code with Ruff
+- Format templates with djhtml
+- Lint templates with curlylint
+- Format JS/CSS with Prettier
+- Check for common issues
+
+## Testing Guidelines
+
+### Writing Tests
+
+**Test Structure:**
+
+```python
+from django.test import TestCase
+from wagtail.test.utils import WagtailPageTestCase
+
+class BlogPageTests(WagtailPageTestCase):
+    def setUp(self):
+        # Set up test data
+        self.home_page = HomePage.objects.first()
+        self.blog_index = BlogIndexPage(
+            title="Blog",
+            slug="blog",
+        )
+        self.home_page.add_child(instance=self.blog_index)
+
+    def test_can_create_blog_page(self):
+        # Test that blog pages can be created
+        blog_page = BlogPage(
+            title="Test Post",
+            slug="test-post",
+            introduction="Test introduction",
+        )
+        self.blog_index.add_child(instance=blog_page)
+        self.assertTrue(blog_page.live)
+
+    def test_blog_page_context(self):
+        # Test page context
+        response = self.client.get(self.blog_page.url)
+        self.assertEqual(response.status_code, 200)
+```
+
+**Test Coverage:**
+
+```bash
+# Run tests with coverage
+coverage run --source='.' manage.py test
+coverage report
+coverage html  # Generate HTML report
+```
+
+### Manual Testing Checklist
+
+Before submitting a PR:
+
+- [ ] All tests pass
+- [ ] Code is formatted with Ruff
+- [ ] No linting errors
+- [ ] Changes work in multiple browsers (if UI changes)
+- [ ] Changes work with demo data
+- [ ] Documentation updated (if needed)
+- [ ] Migration files included (if model changes)
+
+## Documentation
+
+### When to Update Documentation
+
+Update documentation when:
+- Adding new features
+- Changing existing behavior
+- Adding management commands
+- Updating dependencies
+- Fixing significant bugs
+
+### Documentation Style
+
+- Use clear, concise language
+- Include code examples
+- Add screenshots for UI changes
+- Keep README.md up to date
+- Update inline code comments
+
+## Issue Tracking
+
+### Reporting Bugs
+
+When reporting bugs, include:
+
+1. **Description:** Clear description of the issue
+2. **Steps to reproduce:**
+   ```
+   1. Go to /admin/pages/
+   2. Click 'Add child page'
+   3. Select 'Blog page'
+   4. See error
+   ```
+3. **Expected behavior:** What should happen
+4. **Actual behavior:** What actually happens
+5. **Environment:**
+   - OS: macOS 13.0
+   - Python: 3.11
+   - Django: 6.0
+   - Wagtail: 7.2
+6. **Screenshots:** If applicable
+7. **Error logs:** Full traceback if available
+
+### Feature Requests
+
+When requesting features:
+
+1. **Use case:** Why is this needed?
+2. **Proposed solution:** How should it work?
+3. **Alternatives:** Other approaches considered?
+4. **Examples:** Similar features in other projects?
+
+## Pull Request Guidelines
+
+### PR Description Template
+
+```markdown
+## Description
+Brief description of changes
+
+## Related Issue
+Closes #123
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+- [ ] All tests pass
+- [ ] New tests added
+- [ ] Manual testing completed
+
+## Screenshots
+(if applicable)
+
+## Checklist
+- [ ] Code follows project style guidelines
+- [ ] Self-review completed
+- [ ] Comments added for complex code
+- [ ] Documentation updated
+- [ ] No new warnings generated
+```
+
+### Review Process
+
+<Steps>
+  <Step title="Submit PR">
+    Create pull request with complete description
+  </Step>
+
+  <Step title="Automated Checks">
+    Wait for CI/CD checks to pass:
+    - Tests
+    - Linting
+    - Code style
+  </Step>
+
+  <Step title="Review">
+    Maintainers will review within 3 business days (typically 1 day)
+  </Step>
+
+  <Step title="Address Feedback">
+    Make requested changes:
+    ```bash
+    # Make changes
+    git add .
+    git commit -m "Address review feedback"
+    git push origin feature/your-feature
+    ```
+  </Step>
+
+  <Step title="Merge">
+    Once approved, maintainers will merge your PR
+  </Step>
+</Steps>
+
+## Commit Message Guidelines
+
+### Cross-Reference Issues
+
+Always cross-reference and close issues in [commit messages](https://help.github.com/articles/closing-issues-via-commit-messages/):
+
+```bash
+# Close single issue
+git commit -m "Fix broken image upload
+
+Fixes #123"
+
+# Close multiple issues
+git commit -m "Add recipe search
+
+Closes #45, closes #67, fixes #89"
+
+# Reference without closing
+git commit -m "Update search tests
+
+Related to #123"
+```
+
+**Keywords that close issues:**
+- `close`, `closes`, `closed`
+- `fix`, `fixes`, `fixed`
+- `resolve`, `resolves`, `resolved`
+
+## Preparing Fixture Data
+
+If you change content or images and need to prepare a new fixture file:
+
+<Steps>
+  <Step title="Export Data">
+    ```bash
+    ./manage.py dumpdata --natural-foreign --indent 2 \
+      -e auth.permission \
+      -e contenttypes \
+      -e wagtailcore.GroupCollectionPermission \
+      -e wagtailimages.rendition \
+      -e sessions \
+      -e wagtailsearch.indexentry \
+      -e wagtailsearch.sqliteftsindexentry \
+      -e wagtailcore.referenceindex \
+      -e wagtailcore.pagesubscription \
+      -e wagtailcore.workflowcontenttype \
+      -e wagtailadmin.editingsession \
+      > bakerydemo/base/fixtures/bakerydemo.json
+    ```
+  </Step>
+
+  <Step title="Format JSON">
+    ```bash
+    npx prettier --write bakerydemo/base/fixtures/bakerydemo.json
+    ```
+  </Step>
+
+  <Step title="Optimize Images">
+    - Resize images to 1200px wide
+    - Use JPEG compression at 60%
+    - Place in `media/original_images` (not `media/images`)
+  </Step>
+
+  <Step title="Submit PR">
+    Create a pull request with the updated fixtures
+  </Step>
+</Steps>
+
+<Note>
+`media/images` is in `.gitignore` but `media/original_images` is tracked in version control.
+</Note>
+
+## Getting Help
+
+### Community Resources
+
+<CardGroup cols={2}>
+  <Card title="Wagtail Slack" icon="slack" href="https://wagtail.org/slack/">
+    Join the community chat
+  </Card>
+  <Card title="GitHub Discussions" icon="github" href="https://github.com/wagtail/wagtail/discussions">
+    Ask questions and share ideas
+  </Card>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/wagtail">
+    Search for existing solutions
+  </Card>
+  <Card title="Wagtail Documentation" icon="book" href="https://docs.wagtail.org">
+    Official documentation
+  </Card>
+</CardGroup>
+
+### Maintainer Contact
+
+For urgent issues or security concerns:
+- Open a GitHub issue
+- Contact maintainers on Slack
+- Email security issues to security@wagtail.org
+
+## Recognition
+
+Contributors are recognized in:
+- GitHub contributors list
+- Release notes (for significant contributions)
+- Project documentation (where appropriate)
+
+Thank you for contributing to Wagtail Bakery Demo! 🎉

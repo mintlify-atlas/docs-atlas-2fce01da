@@ -1,0 +1,686 @@
+---
+title: Installation
+description: Complete installation guide for all setup methods
+---
+
+This guide covers all methods for installing and running the Wagtail Bakery Demo locally or in the cloud.
+
+<Note>
+If you just want to try out Wagtail quickly, use [Gitpod](#gitpod-setup) or [Docker](#docker-setup). For traditional Django development, use [venv](#venv-setup).
+</Note>
+
+## Gitpod Setup
+
+Run the demo in a cloud development environment with zero local setup required.
+
+### Prerequisites
+
+- GitHub account
+- Modern web browser
+
+### Installation Steps
+
+<Steps>
+  <Step title="Launch Workspace">
+    Click the Gitpod button to create a new workspace:
+
+    [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/wagtail/bakerydemo/)
+  </Step>
+
+  <Step title="Automatic Setup">
+    Gitpod will automatically execute the following setup (defined in `.gitpod.yml`):
+
+    ```bash
+    # Copy local settings template
+    cp bakerydemo/settings/local.py.example bakerydemo/settings/local.py
+    
+    # Set environment variables
+    echo "DJANGO_SETTINGS_MODULE=bakerydemo.settings.dev" > .env
+    
+    # Install Python dependencies
+    python -m pip install -r requirements.txt
+    
+    # Create database schema
+    python manage.py makemigrations
+    python manage.py migrate
+    
+    # Load demo data
+    python manage.py load_initial_data
+    
+    # Configure CSRF for Gitpod URLs
+    echo "CSRF_TRUSTED_ORIGINS = ['https://*.gitpod.io']" >> bakerydemo/settings/local.py
+    
+    # Start development server
+    python manage.py runserver 0.0.0.0:8080
+    ```
+  </Step>
+
+  <Step title="Access the Site">
+    The demo will be available in the "Simple Browser" panel. Click the arrow button next to the URL to open it in a full browser tab.
+
+    - **Site**: Your Gitpod URL on port 8080
+    - **Admin**: Add `/admin/` to your URL
+    - **Credentials**: `admin / changeme`
+  </Step>
+</Steps>
+
+### Gitpod Features
+
+- **Pre-configured Environment**: Python, Node.js, and all dependencies installed
+- **VS Code in Browser**: Full IDE experience with Python extensions
+- **Port Forwarding**: Automatic HTTPS URLs for your development server
+- **Persistent Workspaces**: Your changes are saved between sessions
+
+## Docker Setup
+
+Use Docker Compose to run the demo with PostgreSQL and Redis in containers.
+
+### Prerequisites
+
+Install Docker and Docker Compose:
+- [Docker Desktop](https://docs.docker.com/engine/installation/) (includes Docker Compose)
+- Or install [Docker Engine](https://docs.docker.com/engine/install/) and [Docker Compose](https://docs.docker.com/compose/install/) separately
+
+### Installation Steps
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git --config core.autocrlf=input
+    cd bakerydemo
+    ```
+
+    <Note>
+    The `--config core.autocrlf=input` flag prevents line ending issues on Windows.
+    </Note>
+  </Step>
+
+  <Step title="Build Containers">
+    ```bash
+    docker compose up --build -d
+    ```
+
+    This builds and starts three services:
+    - **db**: PostgreSQL 18.1 database
+    - **redis**: Redis 8.4 cache
+    - **app**: Django application with Python 3.12
+
+    The `-d` flag runs containers in the background.
+  </Step>
+
+  <Step title="Initialize Database">
+    Wait 10 seconds for PostgreSQL to fully start, then run:
+
+    ```bash
+    docker compose run app /venv/bin/python manage.py migrate
+    docker compose run app /venv/bin/python manage.py load_initial_data
+    ```
+
+    <Warning>
+    If you see a database connection error, PostgreSQL may still be initializing. Wait 10 more seconds and retry.
+    </Warning>
+  </Step>
+
+  <Step title="Start in Foreground">
+    ```bash
+    docker compose up
+    ```
+
+    Now the logs will be visible in your terminal.
+  </Step>
+
+  <Step title="Access the Demo">
+    The site is now running:
+    - **Frontend**: [http://localhost:8000/](http://localhost:8000/)
+    - **Admin**: [http://localhost:8000/admin/](http://localhost:8000/admin/)
+    - **Credentials**: `admin / changeme`
+  </Step>
+</Steps>
+
+### Docker Configuration
+
+The `docker-compose.yml` configures:
+
+<CodeGroup>
+```yaml Database Service
+db:
+  environment:
+    POSTGRES_DB: app_db
+    POSTGRES_USER: app_user
+    POSTGRES_PASSWORD: changeme
+  image: postgres:18.1
+  expose:
+    - '5432'
+```
+
+```yaml Redis Service
+redis:
+  image: redis:8.4
+  expose:
+    - '6379'
+```
+
+```yaml Application Service
+app:
+  environment:
+    DJANGO_SECRET_KEY: changeme
+    DATABASE_URL: postgres://app_user:changeme@db/app_db
+    REDIS_URL: redis://redis
+    DJANGO_SETTINGS_MODULE: bakerydemo.settings.dev
+  build:
+    context: .
+    dockerfile: ./Dockerfile
+  volumes:
+    - ./bakerydemo:/code/bakerydemo
+  ports:
+    - '8000:8000'
+```
+</CodeGroup>
+
+### Useful Docker Commands
+
+<CodeGroup>
+```bash View Logs
+# Follow all logs
+docker compose logs -f
+
+# Follow specific service
+docker compose logs -f app
+docker compose logs -f db
+```
+
+```bash Manage Containers
+# Stop all services
+docker compose down
+
+# Stop and remove volumes
+docker compose down -v
+
+# Restart a service
+docker compose restart app
+```
+
+```bash Execute Commands
+# Run Django management commands
+docker compose run app /venv/bin/python manage.py shell
+docker compose run app /venv/bin/python manage.py createsuperuser
+
+# Access container shell
+docker compose exec app bash
+```
+
+```bash Rebuild After Changes
+# Rebuild and restart
+docker compose up --build
+
+# Force rebuild (ignore cache)
+docker compose build --no-cache
+```
+</CodeGroup>
+
+<Warning>
+**Important**: This Docker setup is configured for local testing only and is not intended for production use. Production deployments require additional security hardening, proper secret management, and performance optimization.
+</Warning>
+
+## Vagrant Setup
+
+Use Vagrant to run the demo in a Ubuntu virtual machine.
+
+### Prerequisites
+
+Install the following on your host machine:
+- [Vagrant](https://www.vagrantup.com/)
+- [VirtualBox](https://www.virtualbox.org/)
+
+### Installation Steps
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git
+    cd bakerydemo
+    ```
+  </Step>
+
+  <Step title="Start Vagrant VM">
+    ```bash
+    vagrant up
+    ```
+
+    This command will:
+    - Download the Ubuntu Jammy64 box (if not already cached)
+    - Create and configure the virtual machine
+    - Install Python and all dependencies
+    - Set up the database and load demo data
+
+    <Note>
+    The first run takes several minutes as Vagrant downloads the box image and provisions the VM.
+    </Note>
+  </Step>
+
+  <Step title="SSH into VM">
+    ```bash
+    vagrant ssh
+    ```
+
+    You're now inside the virtual machine.
+  </Step>
+
+  <Step title="Start Development Server">
+    Inside the SSH session, run:
+
+    ```bash
+    ./manage.py runserver 0.0.0.0:8000
+    ```
+
+    <Note>
+    The `0.0.0.0` address is required so the server is accessible from your host machine.
+    </Note>
+  </Step>
+
+  <Step title="Access the Demo">
+    From your host machine's browser:
+    - **Frontend**: [http://localhost:8000/](http://localhost:8000/)
+    - **Admin**: [http://localhost:8000/admin/](http://localhost:8000/admin/)
+    - **Credentials**: `admin / changeme`
+  </Step>
+</Steps>
+
+### Vagrant Configuration
+
+The `Vagrantfile` configures:
+
+```ruby
+# Ubuntu Jammy 22.04 LTS
+config.vm.box = "ubuntu/jammy64"
+config.vm.box_version = "~> 20220810.0.0"
+
+# Port forwarding
+config.vm.network "forwarded_port", guest: 8000, host: 8000
+```
+
+### Vagrant Commands
+
+<CodeGroup>
+```bash VM Management
+# Start the VM
+vagrant up
+
+# Stop the VM
+vagrant halt
+
+# Restart the VM
+vagrant reload
+
+# Delete the VM
+vagrant destroy
+```
+
+```bash Access VM
+# SSH into VM
+vagrant ssh
+
+# Exit SSH session
+exit
+```
+
+```bash Provisioning
+# Re-run provisioning
+vagrant provision
+
+# Check VM status
+vagrant status
+```
+</CodeGroup>
+
+### Stopping the Server
+
+1. Press `Ctrl+C` in the SSH session to stop the Django server
+2. Type `exit` to leave the SSH session
+3. Run `vagrant halt` to stop the VM
+
+## Venv Setup
+
+Traditional Django development setup using Python's built-in virtual environment.
+
+### Prerequisites
+
+- **Python 3.10 or higher**
+- **pip** (Python package installer)
+- **venv** (included with Python 3.3+)
+
+<Note>
+This method is recommended for developers familiar with Django and Python development.
+</Note>
+
+### Installation Steps
+
+<Steps>
+  <Step title="Create Virtual Environment">
+    <CodeGroup>
+    ```bash Linux / macOS
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
+
+    ```cmd Windows (Command Prompt)
+    python -m venv .venv
+    .venv\Scripts\activate.bat
+    ```
+
+    ```powershell Windows (PowerShell)
+    python -m venv .venv
+    .venv\Scripts\Activate.ps1
+    ```
+    </CodeGroup>
+
+    <Note>
+    Your terminal prompt should now show `(.venv)` indicating the virtual environment is active.
+    </Note>
+  </Step>
+
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git
+    cd bakerydemo
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    pip install -r requirements/development.txt
+    ```
+
+    This installs:
+    - Django 6.0+
+    - Wagtail 7.2+
+    - PostgreSQL adapter (psycopg)
+    - Development tools (debug toolbar, extensions)
+    - All other required packages
+  </Step>
+
+  <Step title="Create Configuration Files">
+    ```bash
+    cp bakerydemo/settings/local.py.example bakerydemo/settings/local.py
+    cp .env.example .env
+    ```
+
+    <Note>
+    Windows users: use `copy` instead of `cp`
+    </Note>
+
+    These files allow you to customize local settings without affecting version control:
+    - `local.py` - Django settings overrides
+    - `.env` - Environment variables
+  </Step>
+
+  <Step title="Set Up Database">
+    ```bash
+    ./manage.py migrate
+    ./manage.py load_initial_data
+    ```
+
+    <Note>
+    Windows users: use `python manage.py` instead of `./manage.py`
+    </Note>
+
+    The default configuration uses SQLite, so no database installation is required.
+  </Step>
+
+  <Step title="Start Development Server">
+    ```bash
+    ./manage.py runserver
+    ```
+
+    The server will start at:
+    - **Frontend**: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+    - **Admin**: [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/)
+    - **Credentials**: `admin / changeme`
+  </Step>
+</Steps>
+
+### Project Dependencies
+
+Key packages from `requirements/base.txt`:
+
+<CodeGroup>
+```txt Core Dependencies
+Django>=6.0,<6.1
+wagtail>=7.2,<7.3
+python-dotenv>=1.2.1,<2
+dj-database-url>=3.1.0,<4
+```
+
+```txt Wagtail Extensions
+wagtail-font-awesome-svg>=1,<2
+django-csp>=3.8,<4
+```
+
+```txt Development Tools
+django-debug-toolbar>=4.2,<5
+django-extensions>=4.1,<5
+```
+</CodeGroup>
+
+### Configuration Files
+
+The demo uses several configuration files:
+
+| File | Purpose | Required |
+|------|---------|----------|
+| `bakerydemo/settings/local.py` | Local Django settings overrides | No, but recommended |
+| `.env` | Environment variables (secrets, URLs) | No, but recommended |
+| `bakerydemo/settings/base.py` | Base Django configuration | Yes |
+| `bakerydemo/settings/dev.py` | Development settings | Yes |
+| `bakerydemo/settings/production.py` | Production settings | Yes |
+
+<Note>
+Warnings will be displayed if `local.py` and `.env` are not present, but they're not strictly required for basic functionality.
+</Note>
+
+### Using PostgreSQL Locally
+
+To use PostgreSQL instead of SQLite:
+
+<Steps>
+  <Step title="Install PostgreSQL">
+    Install PostgreSQL for your platform:
+    - Ubuntu/Debian: `sudo apt install postgresql postgresql-contrib`
+    - macOS: `brew install postgresql`
+    - Windows: Download from [postgresql.org](https://www.postgresql.org/download/)
+  </Step>
+
+  <Step title="Create Database">
+    ```bash
+    # Create user and database
+    createuser -P bakerydemo_user
+    createdb -O bakerydemo_user bakerydemo_db
+    ```
+  </Step>
+
+  <Step title="Update .env">
+    Add to your `.env` file:
+
+    ```bash
+    DATABASE_URL=postgres://bakerydemo_user:yourpassword@localhost/bakerydemo_db
+    ```
+  </Step>
+
+  <Step title="Install PostgreSQL Adapter">
+    ```bash
+    pip install psycopg[binary]
+    ```
+  </Step>
+</Steps>
+
+### Django Management Commands
+
+<CodeGroup>
+```bash Database
+# Create migrations
+./manage.py makemigrations
+
+# Apply migrations
+./manage.py migrate
+
+# Create superuser
+./manage.py createsuperuser
+```
+
+```bash Data Management
+# Load demo data
+./manage.py load_initial_data
+
+# Create random test data
+./manage.py create_random_data
+
+# Reset to demo state
+./manage.py reset_demo
+
+# Reset admin password
+./manage.py reset_admin_password
+```
+
+```bash Development
+# Start dev server
+./manage.py runserver
+
+# Open Django shell
+./manage.py shell
+
+# Update search index
+./manage.py update_index
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Database Connection Issues
+
+<Accordion title="PostgreSQL connection refused">
+  **Docker**: Wait 10-15 seconds after `docker compose up` for PostgreSQL to initialize.
+
+  **Local**: Ensure PostgreSQL is running:
+  ```bash
+  # Linux
+  sudo systemctl status postgresql
+  
+  # macOS
+  brew services list
+  
+  # Windows
+  # Check Services app for "postgresql" service
+  ```
+</Accordion>
+
+<Accordion title="Database 'app_db' does not exist">
+  You need to run migrations first:
+  ```bash
+  docker compose run app /venv/bin/python manage.py migrate
+  ```
+</Accordion>
+
+### Import Errors
+
+<Accordion title="ModuleNotFoundError">
+  Ensure your virtual environment is activated and dependencies are installed:
+  ```bash
+  source .venv/bin/activate  # or appropriate activation for your OS
+  pip install -r requirements/development.txt
+  ```
+</Accordion>
+
+<Accordion title="ImportError: No module named 'wagtail'">
+  The virtual environment may not be activated, or Wagtail isn't installed:
+  ```bash
+  pip install wagtail
+  ```
+</Accordion>
+
+### Port Already in Use
+
+<Accordion title="Address already in use: 0.0.0.0:8000">
+  Another service is using port 8000. Either stop that service or use a different port:
+  ```bash
+  ./manage.py runserver 8001
+  ```
+  
+  For Docker:
+  ```bash
+  # Edit docker-compose.yml and change ports to:
+  ports:
+    - '8001:8000'
+  ```
+</Accordion>
+
+### Docker Issues
+
+<Accordion title="docker compose command not found">
+  You may have an older version of Docker. Try:
+  ```bash
+  docker-compose up --build -d
+  ```
+  
+  Or update Docker Desktop to the latest version.
+</Accordion>
+
+<Accordion title="Permission denied on Linux">
+  Add your user to the docker group:
+  ```bash
+  sudo usermod -aG docker $USER
+  newgrp docker
+  ```
+</Accordion>
+
+### Static Files Issues
+
+<Accordion title="Static files not loading">
+  Collect static files:
+  ```bash
+  ./manage.py collectstatic --noinput
+  ```
+  
+  For Docker:
+  ```bash
+  docker compose run app /venv/bin/python manage.py collectstatic --noinput
+  ```
+</Accordion>
+
+## Testing Different Wagtail Versions
+
+The demo's `main` branch works with both the latest stable Wagtail release and the development version. To test specific versions:
+
+```bash
+# Clone and checkout a specific version tag
+git clone https://github.com/wagtail/bakerydemo.git
+cd bakerydemo
+git checkout v6.4  # or v6.3, v6.2, etc.
+```
+
+Available version tags:
+- `v6.4` - Compatible with Wagtail 6.4
+- `v6.3` - Compatible with Wagtail 6.3  
+- `v6.2` - Compatible with Wagtail 6.2
+- `v6.1` - Compatible with Wagtail 6.1
+
+See the [complete tags list](https://github.com/wagtail/bakerydemo/tags) for older releases.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Explore the Code" icon="code">
+    Read through the source code to understand how Wagtail applications are structured. Pay special attention to models, blocks, and hooks.
+  </Card>
+
+  <Card title="Try the Features" icon="wand-magic-sparkles">
+    Log into `/admin/` and experiment with creating pages, uploading images, and using StreamField.
+  </Card>
+
+  <Card title="Read Wagtail Docs" icon="book">
+    Visit [docs.wagtail.org](https://docs.wagtail.org/en/stable/) to learn more about Wagtail's features and best practices.
+  </Card>
+
+  <Card title="Start Your Project" icon="rocket">
+    Ready to build your own site? Use `wagtail start` to create a new project from scratch.
+  </Card>
+</CardGroup>

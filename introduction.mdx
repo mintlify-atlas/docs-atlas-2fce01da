@@ -1,0 +1,184 @@
+---
+title: Introduction
+description: Learn about the Wagtail Bakery Demo - a comprehensive showcase of Wagtail CMS features through a production-ready bakery website.
+---
+
+<div style={{
+  background: 'linear-gradient(135deg, #f39a2f 0%, #84643c 100%)',
+  borderRadius: '8px',
+  padding: '48px 32px',
+  marginBottom: '32px',
+  color: '#ffffff'
+}}>
+  <h1 style={{ 
+    fontSize: '36px', 
+    fontWeight: '700', 
+    marginBottom: '16px',
+    color: '#ffffff'
+  }}>
+    Wagtail Bakery Demo
+  </h1>
+  <p style={{ 
+    fontSize: '18px', 
+    marginBottom: '24px',
+    color: '#ffffff',
+    opacity: '0.95'
+  }}>
+    A comprehensive demonstration project showcasing Wagtail CMS capabilities through a bakery-themed website with multiple content types, multilingual support, and REST API.
+  </p>
+</div>
+
+## What is the Wagtail Bakery Demo?
+
+The Wagtail Bakery Demo is a production-ready demonstration project designed to showcase the powerful features of [Wagtail CMS](https://wagtail.org/). Built on Django and Python, this project demonstrates best practices for building complex content management systems with multiple content types, rich media handling, and multilingual support.
+
+This demo is primarily aimed at developers who want to learn more about Wagtail's internals and see real-world implementations of common CMS patterns. Rather than starting your own project from this demo, we recommend using it as a learning resource and reference implementation.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multiple Content Types" icon="layer-group" href="/content/blog">
+    Blog posts, bread products, recipes, locations, and people pages with rich relationships
+  </Card>
+  <Card title="StreamField Blocks" icon="cubes" href="/concepts/streamfield-blocks">
+    Custom reusable content blocks including headings, images, quotes, and embeds
+  </Card>
+  <Card title="Multilingual Content" icon="language" href="/features/multilingual">
+    Built-in i18n support with English, German, and Arabic translations
+  </Card>
+  <Card title="REST API" icon="code" href="/api/overview">
+    Full-featured Wagtail API v2 for pages, images, and documents
+  </Card>
+  <Card title="Custom Snippets" icon="puzzle-piece" href="/features/snippets">
+    Reusable content snippets for countries, ingredients, and bread types
+  </Card>
+  <Card title="Search & Filtering" icon="magnifying-glass" href="/features/search">
+    Database-backed search with tag-based filtering and routable pages
+  </Card>
+</CardGroup>
+
+## Project Structure
+
+The Bakery Demo is divided into multiple Django apps, each demonstrating different Wagtail features:
+
+- **base** - Core functionality including forms, custom blocks, and the homepage
+- **blog** - A typical weblog with tagging and author relationships
+- **breads** - Product catalog with snippets and many-to-many relationships
+- **recipes** - Recipe pages with ingredients and instructions
+- **locations** - Location pages with geographic data
+- **people** - People snippets with workflow and draft capabilities
+
+## Technology Stack
+
+<CodeGroup>
+```python requirements.txt
+Django>=6.0,<6.1
+wagtail>=7.2,<7.3
+wagtail-font-awesome-svg>=1,<2
+django-debug-toolbar>=4.2,<5
+rest_framework
+```
+
+```dockerfile Dockerfile
+FROM python:3.10
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+```
+</CodeGroup>
+
+## Quick Links
+
+<CardGroup cols={3}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the demo running locally in minutes
+  </Card>
+  <Card title="Installation Options" icon="download" href="/installation">
+    Docker, Vagrant, or virtual environment setup
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Understand the project structure and design patterns
+  </Card>
+  <Card title="Content Models" icon="database" href="/concepts/content-models">
+    Learn about the Page and snippet models
+  </Card>
+  <Card title="API Reference" icon="book-open" href="/api/overview">
+    Explore the REST API endpoints
+  </Card>
+  <Card title="Deployment" icon="rocket-launch" href="/deployment/overview">
+    Deploy to production with Docker or Heroku
+  </Card>
+</CardGroup>
+
+## Who Should Use This Demo?
+
+<AccordionGroup>
+  <Accordion title="Python/Django Developers New to Wagtail">
+    If you're already familiar with Django but new to Wagtail, this demo provides a comprehensive overview of how Wagtail extends Django's capabilities with powerful CMS features. You'll see real implementations of StreamFields, Page models, snippets, and the admin interface customizations.
+  </Accordion>
+  
+  <Accordion title="Content Strategists Planning a Wagtail Project">
+    Explore the demo site to understand how Wagtail handles different content types, relationships between content, and the editorial workflow. The admin interface (`/admin/`) shows what content editors will experience.
+  </Accordion>
+  
+  <Accordion title="Developers Evaluating CMS Options">
+    The Bakery Demo showcases Wagtail's approach to content modeling, API development, multilingual content, and developer experience. Compare it with other CMS solutions to see if Wagtail fits your needs.
+  </Accordion>
+  
+  <Accordion title="Teams Building Similar Projects">
+    If you're building a content-heavy site with multiple content types, complex relationships, or multilingual requirements, study this demo's architecture and implementation patterns.
+  </Accordion>
+</AccordionGroup>
+
+## Live Demo
+
+You can explore a live version of the Bakery Demo or try it instantly in your browser:
+
+<CardGroup cols={2}>
+  <Card title="Try on Gitpod" icon="cloud" href="https://gitpod.io/#https://github.com/wagtail/bakerydemo/">
+    Launch a complete development environment in your browser with one click
+  </Card>
+  <Card title="Admin Interface" icon="user-lock">
+    Log in with `admin / changeme` to explore the Wagtail admin at `/admin/`
+  </Card>
+</CardGroup>
+
+## What's Next?
+
+<Steps>
+  <Step title="Get Started">
+    Follow the [Quickstart](/quickstart) guide to run the demo locally and explore the admin interface
+  </Step>
+  
+  <Step title="Learn Core Concepts">
+    Read about [Architecture](/concepts/architecture) and [Content Models](/concepts/content-models) to understand how the demo is structured
+  </Step>
+  
+  <Step title="Explore Content Types">
+    Dive into the implementation of [Blog](/content/blog), [Breads](/content/breads), and other content types
+  </Step>
+  
+  <Step title="Study the API">
+    Check out the [REST API](/api/overview) to see how Wagtail exposes content programmatically
+  </Step>
+</Steps>
+
+<Note>
+  This demo is **not** intended to be used as a starter template for your own projects. Instead, use it as a learning resource and reference implementation. When you're ready to start your own Wagtail project, run `wagtail start` in your environment.
+</Note>
+
+## Contributing
+
+The Wagtail Bakery Demo is an open-source project maintained by the Wagtail community. If you find issues or want to contribute improvements, check out the [Contributing Guide](/development/contributing) to get started.
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/OluwagbeminiyiA/bakerydemo">
+    View source code, report issues, and contribute
+  </Card>
+  <Card title="Wagtail Documentation" icon="book" href="https://docs.wagtail.org/">
+    Official Wagtail CMS documentation
+  </Card>
+</CardGroup>

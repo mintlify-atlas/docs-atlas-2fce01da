@@ -1,0 +1,155 @@
+---
+title: 'REST API Overview'
+description: 'Introduction to the Wagtail Bakery Demo REST API'
+---
+
+## Introduction
+
+The Wagtail Bakery Demo provides a RESTful API built on Wagtail's API v2 framework. The API allows you to programmatically access pages, images, and documents from the CMS.
+
+## Base URL
+
+All API endpoints are available under the `/api/v2/` base path:
+
+```
+http://localhost:8000/api/v2/
+```
+
+## Available Endpoints
+
+The API exposes three main endpoints:
+
+| Endpoint | URL | Description |
+|----------|-----|-------------|
+| Pages | `/api/v2/pages/` | Access all page content |
+| Images | `/api/v2/images/` | Access image assets |
+| Documents | `/api/v2/documents/` | Access document files |
+
+## API Configuration
+
+The API is configured using Wagtail's `WagtailAPIRouter` in `bakerydemo/api.py`:
+
+```python
+from wagtail.api.v2.router import WagtailAPIRouter
+from wagtail.api.v2.views import PagesAPIViewSet
+from wagtail.documents.api.v2.views import DocumentsAPIViewSet
+from wagtail.images.api.v2.views import ImagesAPIViewSet
+
+# Create the router with "wagtailapi" namespace
+api_router = WagtailAPIRouter("wagtailapi")
+
+# Register endpoints
+api_router.register_endpoint("pages", PagesAPIViewSet)
+api_router.register_endpoint("images", ImagesAPIViewSet)
+api_router.register_endpoint("documents", DocumentsAPIViewSet)
+```
+
+## Authentication
+
+<Note>
+  The API endpoints are publicly accessible by default. For production deployments, consider implementing authentication and rate limiting.
+</Note>
+
+Currently, the API does not require authentication. All endpoints can be accessed without credentials:
+
+```bash
+curl http://localhost:8000/api/v2/pages/
+```
+
+## Response Format
+
+All API responses are returned in JSON format with the following structure:
+
+<ResponseField name="meta" type="object">
+  Metadata about the response, including pagination information
+  
+  <ResponseField name="total_count" type="integer">
+    Total number of items available
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="items" type="array">
+  Array of objects matching the query
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "meta": {
+    "total_count": 15
+  },
+  "items": [
+    {
+      "id": 1,
+      "meta": {
+        "type": "home.HomePage",
+        "detail_url": "http://localhost:8000/api/v2/pages/1/"
+      },
+      "title": "Home"
+    }
+  ]
+}
+```
+
+## Common Query Parameters
+
+All endpoints support standard query parameters:
+
+<ParamField query="limit" type="integer" default="20">
+  Number of items to return per page (max 100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of items to skip before returning results
+</ParamField>
+
+<ParamField query="fields" type="string">
+  Comma-separated list of fields to include in the response. Use `*` for all fields.
+</ParamField>
+
+<ParamField query="order" type="string">
+  Field name to order results by. Prefix with `-` for descending order.
+</ParamField>
+
+### Example with Parameters
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?limit=10&fields=*&order=-first_published_at"
+```
+
+## Pagination
+
+The API uses limit/offset pagination. Navigate through results using the `limit` and `offset` parameters:
+
+```bash
+# First page (items 0-19)
+curl "http://localhost:8000/api/v2/pages/?limit=20&offset=0"
+
+# Second page (items 20-39)
+curl "http://localhost:8000/api/v2/pages/?limit=20&offset=20"
+```
+
+## Error Responses
+
+API errors are returned with appropriate HTTP status codes:
+
+| Status Code | Description |
+|-------------|-------------|
+| 400 | Bad Request - Invalid parameters |
+| 404 | Not Found - Resource doesn't exist |
+| 500 | Internal Server Error |
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Pages API" icon="file" href="/api/pages">
+    Access page content and metadata
+  </Card>
+  <Card title="Images API" icon="image" href="/api/images">
+    Retrieve image assets and renditions
+  </Card>
+  <Card title="Documents API" icon="file-pdf" href="/api/documents">
+    Access document files
+  </Card>
+</CardGroup>

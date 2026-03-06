@@ -1,0 +1,308 @@
+---
+title: Blog Pages
+description: Blog content types including BlogPage and BlogIndexPage with tagging and author relationships
+---
+
+The blog app provides a complete blogging solution with support for multiple authors, tagging, and routable page functionality.
+
+## BlogPage
+
+The main blog post content type that displays individual blog articles.
+
+### Model Definition
+
+```python bakerydemo/blog/models.py
+class BlogPage(Page):
+    """
+    A Blog Page
+    
+    We access the Person object with an inline panel that references the
+    ParentalKey's related_name in BlogPersonRelationship.
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(), verbose_name="Page body", blank=True, use_json_field=True
+    )
+    subtitle = models.CharField(blank=True, max_length=255)
+    tags = ClusterTaggableManager(through=BlogPageTag, blank=True)
+    date_published = models.DateField("Date article published", blank=True, null=True)
+```
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Introductory text to describe the blog post. Optional.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Featured image for the blog post. Should be landscape mode with horizontal width between 1000px and 3000px.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Main content area using `BaseStreamBlock`. Supports rich content including headings, paragraphs, images, embeds, and more.
+</ParamField>
+
+<ParamField path="subtitle" type="CharField">
+  Optional subtitle displayed below the main title. Maximum 255 characters.
+</ParamField>
+
+<ParamField path="tags" type="ClusterTaggableManager">
+  Tags for categorizing blog posts. Uses the `BlogPageTag` model for many-to-many relationships.
+</ParamField>
+
+<ParamField path="date_published" type="DateField">
+  Publication date for the blog post. Used for sorting and display.
+</ParamField>
+
+### Author Relationships
+
+Blog posts support multiple authors through the `BlogPersonRelationship` model:
+
+```python bakerydemo/blog/models.py
+class BlogPersonRelationship(Orderable, models.Model):
+    """
+    This defines the relationship between the `Person` within the `base`
+    app and the BlogPage. This allows people to be added to a BlogPage.
+    
+    We have created a two way relationship between BlogPage and Person using
+    the ParentalKey and ForeignKey
+    """
+    page = ParentalKey(
+        "BlogPage", related_name="blog_person_relationship", on_delete=models.CASCADE
+    )
+    person = models.ForeignKey(
+        "base.Person", related_name="person_blog_relationship", on_delete=models.CASCADE
+    )
+```
+
+The `authors()` method returns only live (published) authors:
+
+```python
+def authors(self):
+    # Only return authors that are not in draft
+    return [
+        n.person
+        for n in self.blog_person_relationship.filter(
+            person__live=True
+        ).select_related("person")
+    ]
+```
+
+### Tagging
+
+Blog posts use Wagtail's tagging functionality through `ClusterTaggableManager`:
+
+```python bakerydemo/blog/models.py
+class BlogPageTag(TaggedItemBase):
+    """
+    This model allows us to create a many-to-many relationship between
+    the BlogPage object and tags.
+    """
+    content_object = ParentalKey(
+        "BlogPage", related_name="tagged_items", on_delete=models.CASCADE
+    )
+```
+
+The `get_tags` property enhances tags with URLs:
+
+```python
+@property
+def get_tags(self):
+    tags = self.tags.all()
+    base_url = self.get_parent().url
+    for tag in tags:
+        tag.url = f"{base_url}tags/{tag.slug}/"
+    return tags
+```
+
+### Admin Configuration
+
+<Tabs>
+  <Tab title="Content Panels">
+    ```python
+    content_panels = Page.content_panels + [
+        FieldPanel("subtitle"),
+        FieldPanel("introduction"),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        FieldPanel("date_published"),
+        MultipleChooserPanel(
+            "blog_person_relationship",
+            chooser_field_name="person",
+            heading="Authors",
+            label="Author",
+            panels=None,
+            min_num=1,
+        ),
+        FieldPanel("tags"),
+    ]
+    ```
+    
+    Authors are required (minimum 1) and selected via `MultipleChooserPanel`.
+  </Tab>
+  
+  <Tab title="Search Configuration">
+    ```python
+    search_fields = Page.search_fields + [
+        index.SearchField("body"),
+    ]
+    ```
+    
+    The body content is indexed for full-text search.
+  </Tab>
+  
+  <Tab title="API Fields">
+    ```python
+    api_fields = [
+        APIField("introduction"),
+        APIField("image"),
+        APIField("body"),
+        APIField("subtitle"),
+        APIField("tags"),
+        APIField("date_published"),
+        APIField("blog_person_relationship"),
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Page Hierarchy
+
+<Note>
+  **Parent:** BlogPage can only be created under `BlogIndexPage`.
+  
+  **Children:** BlogPage cannot have child pages (`subpage_types = []`).
+</Note>
+
+## BlogIndexPage
+
+The index page for blog posts with tag filtering and routable pages.
+
+### Model Definition
+
+```python bakerydemo/blog/models.py
+class BlogIndexPage(RoutablePageMixin, Page):
+    """
+    Index page for blogs.
+    We need to alter the page model's context to return the child page objects,
+    the BlogPage objects, so that it works as an index page
+    
+    RoutablePageMixin is used to allow for a custom sub-URL for the tag views.
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+```
+
+### Routable Pages
+
+BlogIndexPage uses `RoutablePageMixin` to provide custom URL routes for tag filtering:
+
+```python
+@route(r"^tags/$", name="tag_archive")
+@route(r"^tags/([\w-]+)/$", name="tag_archive")
+def tag_archive(self, request, tag=None):
+    try:
+        tag = Tag.objects.get(slug=tag)
+    except Tag.DoesNotExist:
+        if tag:
+            msg = 'There are no blog posts tagged with "{}"'.format(tag)
+            messages.add_message(request, messages.INFO, msg)
+        return redirect(self.url)
+    
+    posts = self.get_posts(tag=tag)
+    context = {"self": self, "tag": tag, "posts": posts}
+    return render(request, "blog/blog_index_page.html", context)
+```
+
+This enables URLs like:
+- `/blog/tags/` - All tags
+- `/blog/tags/python/` - Posts tagged with "python"
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="children()" icon="list">
+    Returns all live child BlogPage objects.
+    
+    ```python
+    def children(self):
+        return self.get_children().specific().live()
+    ```
+  </Card>
+  
+  <Card title="get_posts()" icon="filter">
+    Returns blog posts, optionally filtered by tag.
+    
+    ```python
+    def get_posts(self, tag=None):
+        posts = BlogPage.objects.live().descendant_of(self)
+        if tag:
+            posts = posts.filter(tags=tag)
+        return posts
+    ```
+  </Card>
+  
+  <Card title="get_child_tags()" icon="tag">
+    Returns all unique tags used across child blog posts.
+    
+    ```python
+    def get_child_tags(self):
+        tags = []
+        for post in self.get_posts():
+            tags += post.get_tags
+        tags = sorted(set(tags))
+        return tags
+    ```
+  </Card>
+  
+  <Card title="get_context()" icon="brackets-curly">
+    Provides blog posts ordered by publication date.
+    
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        context["posts"] = (
+            BlogPage.objects
+            .descendant_of(self)
+            .live()
+            .order_by("-date_published")
+        )
+        return context
+    ```
+  </Card>
+</CardGroup>
+
+### Page Hierarchy
+
+<Note>
+  **Children:** BlogIndexPage can only have `BlogPage` children.
+</Note>
+
+## Usage Example
+
+Creating a blog structure in your Wagtail site:
+
+1. Create a `BlogIndexPage` under your home page
+2. Add multiple `BlogPage` instances under the index page
+3. Assign authors using the Person snippet
+4. Add tags for categorization
+5. Tags automatically become filterable at `/blog/tags/{tag-slug}/`
+
+<Note>
+  The routable pages feature requires the `wagtail.contrib.routable_page` app to be installed in `INSTALLED_APPS`.
+</Note>

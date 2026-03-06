@@ -1,0 +1,440 @@
+---
+title: Recipe Pages
+description: Recipe content types with advanced StreamField patterns and custom recipe blocks
+---
+
+The recipes app demonstrates advanced StreamField usage with custom blocks for ingredients, cooking steps with difficulty ratings, and multiple content areas.
+
+## RecipePage
+
+A sophisticated content type for displaying recipes with structured ingredients and steps.
+
+### Model Definition
+
+```python bakerydemo/recipes/models.py
+class RecipePage(Page):
+    """
+    Recipe pages are more complex than blog pages, demonstrating 
+    more advanced StreamField patterns.
+    """
+    date_published = models.DateField("Date article published", blank=True, null=True)
+    subtitle = models.CharField(blank=True, max_length=255)
+    introduction = models.TextField(blank=True, max_length=500)
+    backstory = StreamField(
+        BaseStreamBlock(),
+        block_counts={
+            "heading_block": {"max_num": 1},
+            "image_block": {"max_num": 1},
+            "embed_block": {"max_num": 1},
+        },
+        blank=True,
+        use_json_field=True,
+        help_text="Use only a minimum number of headings and large blocks.",
+    )
+    recipe_headline = RichTextField(
+        blank=True,
+        max_length=120,
+        features=["bold", "italic", "link"],
+        help_text="Keep to a single line",
+    )
+    body = StreamField(
+        RecipeStreamBlock(),
+        blank=True,
+        use_json_field=True,
+        help_text="The recipe's step-by-step instructions and any other relevant information.",
+    )
+```
+
+### Fields
+
+<ParamField path="date_published" type="DateField">
+  Publication date for the recipe. Used for sorting in the recipe index.
+</ParamField>
+
+<ParamField path="subtitle" type="CharField">
+  Optional subtitle, displayed with larger styling (uses `classname="title"` in admin). Maximum 255 characters.
+</ParamField>
+
+<ParamField path="introduction" type="TextField">
+  Brief introduction to the recipe. Maximum 500 characters.
+</ParamField>
+
+<ParamField path="backstory" type="StreamField">
+  Rich content area for recipe background story. Uses `block_counts` to limit:
+  - Maximum 1 heading block
+  - Maximum 1 image block  
+  - Maximum 1 embed block
+  
+  This keeps the backstory concise and focused.
+</ParamField>
+
+<ParamField path="recipe_headline" type="RichTextField">
+  Single-line rich text headline with limited features (bold, italic, link only). Maximum 120 characters.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Main recipe content using `RecipeStreamBlock` with specialized cooking blocks for ingredients lists and step-by-step instructions.
+</ParamField>
+
+### Author Relationships
+
+Recipes support 1-3 authors through the `RecipePersonRelationship` model:
+
+```python bakerydemo/recipes/models.py
+class RecipePersonRelationship(Orderable, models.Model):
+    """
+    This defines the relationship between the `Person` within the `base`
+    app and the RecipePage. This allows people to be added to a RecipePage.
+    """
+    page = ParentalKey(
+        "RecipePage",
+        related_name="recipe_person_relationship",
+        on_delete=models.CASCADE,
+    )
+    person = models.ForeignKey(
+        "base.Person",
+        related_name="person_recipe_relationship",
+        on_delete=models.CASCADE,
+    )
+```
+
+The `authors()` method filters to show only live authors:
+
+```python
+def authors(self):
+    # Only return authors that are not in draft
+    return [
+        n.person
+        for n in self.recipe_person_relationship.filter(
+            person__live=True
+        ).select_related("person")
+    ]
+```
+
+### Admin Configuration
+
+<Tabs>
+  <Tab title="Content Panels">
+    ```python
+    content_panels = Page.content_panels + [
+        FieldPanel("date_published"),
+        # Using `title` classname to make field larger
+        FieldPanel("subtitle", classname="title"),
+        MultiFieldPanel(
+            [
+                HelpPanel(
+                    "Refer to keywords analysis and correct international "
+                    "ingredients names to craft the best introduction backstory, "
+                    "and headline."
+                ),
+                FieldPanel("introduction"),
+                FieldPanel("backstory"),
+                FieldPanel("recipe_headline"),
+            ],
+            heading="Preface",
+        ),
+        FieldPanel("body"),
+        MultipleChooserPanel(
+            "recipe_person_relationship",
+            chooser_field_name="person",
+            heading="Authors",
+            label="Author",
+            help_text="Select between one and three authors",
+            panels=None,
+            min_num=1,
+            max_num=3,
+        ),
+    ]
+    ```
+    
+    Notable features:
+    - `HelpPanel` provides editorial guidance
+    - `MultiFieldPanel` groups related preface fields
+    - Authors limited to 1-3 selections
+    - Subtitle uses `classname="title"` for larger display
+  </Tab>
+  
+  <Tab title="Search Configuration">
+    ```python
+    search_fields = Page.search_fields + [
+        index.SearchField("backstory"),
+        index.SearchField("body"),
+    ]
+    ```
+    
+    Both backstory and body content are searchable.
+  </Tab>
+  
+  <Tab title="API Fields">
+    ```python
+    api_fields = [
+        APIField("date_published"),
+        APIField("subtitle"),
+        APIField("introduction"),
+        APIField("backstory"),
+        APIField("recipe_headline"),
+        APIField("body"),
+        APIField("recipe_person_relationship"),
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Page Hierarchy
+
+<Note>
+  **Parent:** RecipePage can only be created under `RecipeIndexPage`.
+  
+  **Children:** RecipePage cannot have child pages (`subpage_types = []`).
+</Note>
+
+## RecipeStreamBlock
+
+Custom StreamField block definition for recipe content with specialized cooking blocks.
+
+### Block Definition
+
+```python bakerydemo/recipes/blocks.py
+class RecipeStreamBlock(StreamBlock):
+    """
+    Define the custom blocks that `StreamField` will utilize
+    """
+    # Content blocks
+    heading_block = HeadingBlock(group="Content")
+    paragraph_block = RichTextBlock(
+        icon="pilcrow", 
+        template="blocks/paragraph_block.html", 
+        group="Content"
+    )
+    block_quote = BlockQuote(group="Content")
+    table_block = TableBlock(group="Content")
+    typed_table_block = TypedTableBlock([...], group="Content")
+    
+    # Media blocks
+    image_block = CustomImageBlock(group="Media")
+    embed_block = EmbedBlock(group="Media")
+    
+    # Cooking-specific blocks
+    ingredients_list = ListBlock(
+        RichTextBlock(features=["bold", "italic", "link"]),
+        min_num=2,
+        max_num=10,
+        icon="list-ol",
+        group="Cooking",
+    )
+    steps_list = ListBlock(
+        RecipeStepBlock(),
+        min_num=2,
+        max_num=10,
+        icon="tasks",
+        group="Cooking",
+    )
+```
+
+### Cooking Blocks
+
+<CardGroup cols={2}>
+  <Card title="ingredients_list" icon="list-ol">
+    A list of ingredients (2-10 items) with rich text formatting.
+    
+    ```python
+    ingredients_list = ListBlock(
+        RichTextBlock(features=["bold", "italic", "link"]),
+        min_num=2,
+        max_num=10,
+        icon="list-ol",
+        group="Cooking",
+    )
+    ```
+    
+    Example:
+    - **200g** flour
+    - 1 egg
+    - *1 cup* of sugar
+  </Card>
+  
+  <Card title="steps_list" icon="tasks">
+    Step-by-step instructions (2-10 steps) with difficulty ratings.
+    
+    ```python
+    steps_list = ListBlock(
+        RecipeStepBlock(),
+        min_num=2,
+        max_num=10,
+        icon="tasks",
+        group="Cooking",
+    )
+    ```
+    
+    Each step includes text and difficulty (S/M/L).
+  </Card>
+</CardGroup>
+
+### RecipeStepBlock
+
+A structured block for individual recipe steps with difficulty rating:
+
+```python bakerydemo/recipes/blocks.py
+class RecipeStepBlock(StructBlock):
+    text = RichTextBlock(features=["bold", "italic", "link"])
+    difficulty = ChoiceBlock(
+        widget=forms.RadioSelect,
+        choices=[
+            ("S", "Small"),
+            ("M", "Medium"),
+            ("L", "Large"),
+        ],
+        default="S",
+    )
+    
+    class Meta:
+        template = "blocks/recipe_step_block.html"
+        icon = "tick"
+```
+
+<Note>
+  The difficulty field uses radio buttons for easy selection during editing.
+</Note>
+
+### Table Blocks
+
+RecipeStreamBlock includes both simple and typed table blocks:
+
+<Tabs>
+  <Tab title="TableBlock">
+    ```python
+    table_block = TableBlock(
+        group="Content",
+        description="A table of data with plain text cells",
+    )
+    ```
+    
+    Standard table with plain text cells.
+  </Tab>
+  
+  <Tab title="TypedTableBlock">
+    ```python
+    typed_table_block = TypedTableBlock(
+        [
+            ("text", CharBlock()),
+            ("numeric", FloatBlock()),
+            ("rich_text", RichTextBlock()),
+            ("image", CustomImageBlock()),
+        ],
+        group="Content",
+        description="A table with cells that can include text, "
+                    "numbers, rich text, and images",
+    )
+    ```
+    
+    Advanced table supporting multiple cell types including images.
+  </Tab>
+</Tabs>
+
+## RecipeIndexPage
+
+Simple index page listing all recipes.
+
+### Model Definition
+
+```python bakerydemo/recipes/models.py
+class RecipeIndexPage(Page):
+    """
+    Index page for recipes.
+    We need to alter the page model's context to return the child page objects,
+    the RecipePage objects, so that it works as an index page
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    
+    content_panels = Page.content_panels + [
+        FieldPanel("introduction"),
+    ]
+```
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="children()" icon="list">
+    Returns all live child recipe pages.
+    
+    ```python
+    def children(self):
+        return self.get_children().specific().live()
+    ```
+  </Card>
+  
+  <Card title="get_context()" icon="brackets-curly">
+    Provides recipes ordered by publication date.
+    
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        context["recipes"] = (
+            RecipePage.objects
+            .descendant_of(self)
+            .live()
+            .order_by("-date_published")
+        )
+        return context
+    ```
+  </Card>
+</CardGroup>
+
+### Page Hierarchy
+
+<Note>
+  **Children:** RecipeIndexPage can only have `RecipePage` children.
+</Note>
+
+## Advanced Features
+
+### Block Count Constraints
+
+The `backstory` field demonstrates `block_counts` to enforce content limits:
+
+```python
+backstory = StreamField(
+    BaseStreamBlock(),
+    block_counts={
+        "heading_block": {"max_num": 1},
+        "image_block": {"max_num": 1},
+        "embed_block": {"max_num": 1},
+    },
+)
+```
+
+This prevents editors from adding too many large elements to the backstory section.
+
+### Limited Rich Text Features
+
+The `recipe_headline` field demonstrates feature-limited rich text:
+
+```python
+recipe_headline = RichTextField(
+    features=["bold", "italic", "link"],
+    max_length=120,
+)
+```
+
+Only bold, italic, and link formatting is available, keeping headlines clean.
+
+### Grouped Blocks
+
+Blocks are organized into groups in the StreamField chooser:
+- **Content** - Headings, paragraphs, quotes, tables
+- **Media** - Images, embeds
+- **Cooking** - Ingredients lists, recipe steps
+
+<Note>
+  Block grouping improves the editing experience by categorizing related blocks together.
+</Note>
+
+## Usage Example
+
+1. Create a `RecipeIndexPage` under your home page
+2. Add `RecipePage` instances as children
+3. Fill in the preface section (introduction, backstory, headline)
+4. Use the `ingredients_list` block to add ingredients
+5. Use the `steps_list` block to add cooking steps with difficulty ratings
+6. Assign 1-3 authors from the Person snippet
+7. Optionally add tables for nutritional information

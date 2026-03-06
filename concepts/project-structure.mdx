@@ -1,0 +1,423 @@
+---
+title: Project Structure
+description: Directory layout and organization of the Wagtail Bakery Demo project
+---
+
+The Wagtail Bakery Demo follows Django's standard project structure with Wagtail-specific additions. This guide explains the purpose of each directory and file.
+
+## Root Directory Structure
+
+```
+wagtail-bakery-demo/
+├── bakerydemo/           # Main Django project package
+├── manage.py             # Django management script
+├── requirements/         # Python dependencies
+├── requirements.txt      # Main requirements file
+├── Dockerfile            # Docker container configuration
+├── docker-compose.yml    # Docker services configuration
+├── .env.example          # Environment variables template
+├── package.json          # Frontend dependencies (npm)
+├── ruff.toml            # Python linter configuration
+└── readme.md            # Project documentation
+```
+
+## The bakerydemo Package
+
+The main project package contains all Django apps and configuration:
+
+```
+bakerydemo/
+├── __init__.py
+├── settings/            # Settings modules
+├── urls.py             # URL configuration
+├── wsgi.py             # WSGI application
+├── api.py              # API router configuration
+├── base/               # Core app
+├── blog/               # Blog functionality
+├── breads/             # Bread catalog
+├── recipes/            # Recipe pages
+├── locations/          # Bakery locations
+├── people/             # Person model
+├── search/             # Search functionality
+├── templates/          # Global templates
+├── static/             # Static files (CSS, JS, images)
+└── media/              # User-uploaded files
+```
+
+## Key Files Explained
+
+### manage.py
+
+The Django management script is your primary interface for running commands:
+
+```python
+#!/usr/bin/env python
+import os
+import sys
+import dotenv
+
+if __name__ == "__main__":
+    dotenv.load_dotenv()  # Load environment variables from .env
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "bakerydemo.settings.dev")
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(sys.argv)
+```
+
+<Note>
+  The `manage.py` file loads environment variables from `.env` and defaults to development settings.
+</Note>
+
+### urls.py
+
+The main URL configuration routes requests to appropriate views:
+
+```python
+from django.urls import include, path
+from wagtail import urls as wagtail_urls
+from wagtail.admin import urls as wagtailadmin_urls
+
+urlpatterns = [
+    path("django-admin/", admin.site.urls),      # Django admin
+    path("admin/", include(wagtailadmin_urls)),  # Wagtail admin
+    path("documents/", include(wagtaildocs_urls)),
+    path("search/", search_views.search, name="search"),
+    path("sitemap.xml", sitemap),
+    path("api/v2/", api_router.urls),            # REST API
+    path("", include(wagtail_urls)),             # Wagtail pages (catch-all)
+]
+```
+
+<Steps>
+  <Step title="Django Admin">
+    Located at `/django-admin/` - provides access to Django's built-in admin interface for low-level model management.
+  </Step>
+  <Step title="Wagtail Admin">
+    Located at `/admin/` - the primary content editing interface with Wagtail's user-friendly experience.
+  </Step>
+  <Step title="API Endpoints">
+    Located at `/api/v2/` - RESTful API for accessing pages, images, and documents programmatically.
+  </Step>
+  <Step title="Page Routing">
+    The catch-all pattern at the end routes all other URLs through Wagtail's page tree structure.
+  </Step>
+</Steps>
+
+### api.py
+
+Configures the Wagtail API endpoints:
+
+```python
+from wagtail.api.v2.router import WagtailAPIRouter
+from wagtail.api.v2.views import PagesAPIViewSet
+from wagtail.documents.api.v2.views import DocumentsAPIViewSet
+from wagtail.images.api.v2.views import ImagesAPIViewSet
+
+api_router = WagtailAPIRouter("wagtailapi")
+api_router.register_endpoint("pages", PagesAPIViewSet)
+api_router.register_endpoint("images", ImagesAPIViewSet)
+api_router.register_endpoint("documents", DocumentsAPIViewSet)
+```
+
+### wsgi.py
+
+WSGI application for production deployment:
+
+```python
+import os
+from django.core.wsgi import get_wsgi_application
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "bakerydemo.settings.production")
+application = get_wsgi_application()
+```
+
+## Settings Directory
+
+Settings are split into multiple files for different environments:
+
+```
+settings/
+├── __init__.py
+├── base.py              # Common settings
+├── dev.py              # Development settings
+├── production.py       # Production settings
+├── test.py             # Test settings
+└── local.py.example    # Local overrides template
+```
+
+### base.py Structure
+
+The base settings file contains configuration shared across all environments:
+
+<Accordion title="Project Paths">
+  ```python
+  PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+  BASE_DIR = os.path.dirname(PROJECT_DIR)
+  ```
+</Accordion>
+
+<Accordion title="Installed Apps">
+  Lists all Django apps in order:
+  1. Project apps (bakerydemo.base, blog, etc.)
+  2. Wagtail apps
+  3. Third-party apps (modelcluster, taggit)
+  4. Django contrib apps
+</Accordion>
+
+<Accordion title="Middleware">
+  ```python
+  MIDDLEWARE = [
+      "django.middleware.security.SecurityMiddleware",
+      "django.contrib.sessions.middleware.SessionMiddleware",
+      "django.middleware.common.CommonMiddleware",
+      "django.middleware.csrf.CsrfViewMiddleware",
+      "django.contrib.auth.middleware.AuthenticationMiddleware",
+      "django.contrib.messages.middleware.MessageMiddleware",
+      "django.middleware.clickjacking.XFrameOptionsMiddleware",
+      "wagtail.contrib.redirects.middleware.RedirectMiddleware",
+  ]
+  ```
+</Accordion>
+
+<Accordion title="Database Configuration">
+  ```python
+  if "DATABASE_URL" in os.environ:
+      DATABASES = {"default": dj_database_url.config(conn_max_age=500)}
+  else:
+      DATABASES = {
+          "default": {
+              "ENGINE": "django.db.backends.sqlite3",
+              "NAME": os.path.join(BASE_DIR, "bakerydemodb"),
+          }
+      }
+  ```
+</Accordion>
+
+<Accordion title="Static Files">
+  ```python
+  STATICFILES_DIRS = [os.path.join(PROJECT_DIR, "static")]
+  STATIC_ROOT = os.path.join(PROJECT_DIR, "collect_static")
+  STATIC_URL = "/static/"
+  
+  MEDIA_ROOT = os.path.join(PROJECT_DIR, "media")
+  MEDIA_URL = "/media/"
+  ```
+</Accordion>
+
+<Accordion title="Wagtail Configuration">
+  ```python
+  WAGTAIL_SITE_NAME = "The Wagtail Bakery"
+  WAGTAIL_I18N_ENABLED = True
+  WAGTAIL_CONTENT_LANGUAGES = LANGUAGES = [
+      ("en", "English"),
+      ("de", "Deutsch"),
+      ("ar", "العربيّة"),
+  ]
+  ```
+</Accordion>
+
+## Django App Structure
+
+Each Django app follows a consistent structure:
+
+```
+app_name/
+├── __init__.py
+├── models.py           # Data models
+├── blocks.py          # StreamField blocks (optional)
+├── views.py           # View functions (optional)
+├── admin.py           # Django admin config (optional)
+├── wagtail_hooks.py   # Wagtail admin customizations (optional)
+├── templatetags/      # Custom template tags (optional)
+├── migrations/        # Database migrations
+├── fixtures/          # Sample data (optional)
+└── tests/            # Unit tests (optional)
+```
+
+### Example: Base App Structure
+
+```
+base/
+├── __init__.py
+├── models.py              # HomePage, StandardPage, Person, FooterText
+├── blocks.py             # BaseStreamBlock, CaptionedImageBlock, HeadingBlock
+├── filters.py            # Custom filters
+├── wagtail_hooks.py      # Admin customizations
+├── management/
+│   └── commands/         # Custom management commands
+│       ├── create_random_data.py
+│       ├── load_initial_data.py
+│       └── reset_demo.py
+├── migrations/           # Database migration files
+├── fixtures/            # Initial data files
+├── templatetags/        # Custom template tags
+│   └── navigation_tags.py
+└── tests/               # Test files
+```
+
+## Templates Directory
+
+Templates are organized by app and component:
+
+```
+templates/
+├── base.html                  # Base template
+├── 404.html                   # 404 error page
+├── 500.html                   # 500 error page
+├── blocks/                    # StreamField block templates
+│   ├── captioned_image_block.html
+│   ├── heading_block.html
+│   ├── blockquote.html
+│   └── paragraph_block.html
+├── blog/                      # Blog templates
+│   ├── blog_index_page.html
+│   └── blog_page.html
+├── breads/                    # Bread templates
+│   ├── breads_index_page.html
+│   └── bread_page.html
+├── recipes/                   # Recipe templates
+│   ├── recipe_index_page.html
+│   └── recipe_page.html
+├── locations/                 # Location templates
+│   ├── locations_index_page.html
+│   └── location_page.html
+├── tags/                      # Reusable components
+│   └── navigation.html
+└── search/                    # Search templates
+    └── search.html
+```
+
+## Static Files Directory
+
+Static assets organized by type:
+
+```
+static/
+├── css/                  # Stylesheets
+│   └── bakerydemo.css
+├── js/                   # JavaScript files
+│   └── bakerydemo.js
+└── img/                  # Images
+    ├── bread-favicon.ico
+    └── ...
+```
+
+## Requirements Files
+
+Python dependencies are organized in a requirements directory:
+
+```
+requirements/
+├── base.txt              # Core dependencies
+├── development.txt       # Development tools
+└── production.txt        # Production dependencies
+```
+
+The root `requirements.txt` points to the base requirements:
+
+```txt
+-r requirements/base.txt
+```
+
+## Common Management Commands
+
+The project includes custom management commands in `base/management/commands/`:
+
+<CardGroup cols={2}>
+  <Card title="load_initial_data" icon="download">
+    Loads sample content and images for the demo site
+  </Card>
+  <Card title="create_random_data" icon="shuffle">
+    Generates random test data for development
+  </Card>
+  <Card title="reset_demo" icon="rotate-right">
+    Resets the demo site to its initial state
+  </Card>
+  <Card title="reset_admin_password" icon="key">
+    Resets the admin user password
+  </Card>
+</CardGroup>
+
+Run these commands with:
+
+```bash
+python manage.py load_initial_data
+python manage.py create_random_data
+```
+
+## Development vs Production Structure
+
+<Tabs>
+  <Tab title="Development">
+    Development uses SQLite and file-based media storage:
+    ```
+    bakerydemo/
+    ├── bakerydemodb           # SQLite database file
+    └── media/                 # Local media files
+    ```
+    
+    Static files are served by Django's development server.
+  </Tab>
+  
+  <Tab title="Production">
+    Production typically uses:
+    - PostgreSQL database (configured via `DATABASE_URL`)
+    - Cloud storage for media files (S3, GCS, etc.)
+    - Collected static files in `collect_static/`
+    
+    ```bash
+    python manage.py collectstatic  # Gather all static files
+    ```
+  </Tab>
+</Tabs>
+
+## Docker Structure
+
+The project includes Docker support:
+
+```
+├── Dockerfile               # Container image definition
+├── docker-compose.yml      # Multi-container setup
+└── docker-entrypoint.sh    # Container startup script
+```
+
+## Configuration Files
+
+<Accordion title=".env.example">
+  Template for environment variables:
+  ```bash
+  DATABASE_URL=postgres://user:pass@localhost/dbname
+  SECRET_KEY=your-secret-key
+  DJANGO_SETTINGS_MODULE=bakerydemo.settings.production
+  ```
+</Accordion>
+
+<Accordion title="ruff.toml">
+  Python linter configuration for code quality
+</Accordion>
+
+<Accordion title="package.json">
+  Frontend dependencies managed by npm:
+  ```json
+  {
+    "scripts": {
+      "build": "...",
+      "start": "..."
+    },
+    "dependencies": { ... }
+  }
+  ```
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Learn about the overall architecture
+  </Card>
+  <Card title="Content Models" icon="database" href="/concepts/content-models">
+    Explore page models and relationships
+  </Card>
+  <Card title="StreamField Blocks" icon="cubes" href="/concepts/streamfield-blocks">
+    Understand content blocks
+  </Card>
+</CardGroup>

@@ -1,0 +1,357 @@
+---
+title: Bread Pages
+description: Bread content types including BreadPage, BreadsIndexPage, and related snippets
+---
+
+The breads app showcases bread products with support for ingredients, countries of origin, bread types, and pagination.
+
+## BreadPage
+
+Detail page for a specific bread product.
+
+### Model Definition
+
+```python bakerydemo/breads/models.py
+class BreadPage(Page):
+    """
+    Detail view for a specific bread
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(), verbose_name="Page body", blank=True, use_json_field=True
+    )
+    origin = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    bread_type = models.ForeignKey(
+        "breads.BreadType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    ingredients = ParentalManyToManyField("BreadIngredient", blank=True)
+```
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Introductory text describing the bread. Optional.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Hero image for the bread. Should be landscape mode with horizontal width between 1000px and 3000px.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Main content using `BaseStreamBlock`. Supports rich content blocks.
+</ParamField>
+
+<ParamField path="origin" type="ForeignKey">
+  Country of origin for the bread. Links to the `Country` snippet.
+</ParamField>
+
+<ParamField path="bread_type" type="ForeignKey">
+  Type classification (e.g., sourdough, whole wheat). Links to `BreadType` snippet.
+</ParamField>
+
+<ParamField path="ingredients" type="ParentalManyToManyField">
+  Multiple ingredients can be selected. Uses `BreadIngredient` snippet with checkbox selection.
+</ParamField>
+
+### Helper Methods
+
+The `ordered_ingredients` property returns ingredients sorted by their sort order:
+
+```python
+@property
+def ordered_ingredients(self):
+    """Return ingredients ordered by sort_order, then name."""
+    return self.ingredients.order_by("sort_order", "name")
+```
+
+### Admin Configuration
+
+<Tabs>
+  <Tab title="Content Panels">
+    ```python
+    content_panels = Page.content_panels + [
+        FieldPanel("introduction"),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        FieldPanel("origin"),
+        FieldPanel("bread_type"),
+        MultiFieldPanel(
+            [
+                FieldPanel(
+                    "ingredients",
+                    widget=forms.CheckboxSelectMultiple,
+                ),
+            ],
+            heading="Additional Metadata",
+            classname="collapsed",
+        ),
+    ]
+    ```
+    
+    Ingredients are displayed as checkboxes within a collapsible panel.
+  </Tab>
+  
+  <Tab title="Search Configuration">
+    ```python
+    search_fields = Page.search_fields + [
+        index.SearchField("body"),
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="API Fields">
+    ```python
+    api_fields = [
+        APIField("introduction"),
+        APIField("image"),
+        APIField("body"),
+        APIField("origin"),
+        APIField("bread_type"),
+        APIField("ingredients"),
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Page Hierarchy
+
+<Note>
+  **Parent:** BreadPage can only be created under `BreadsIndexPage`.
+</Note>
+
+## BreadsIndexPage
+
+Index page listing all breads with pagination support.
+
+### Model Definition
+
+```python bakerydemo/breads/models.py
+class BreadsIndexPage(Page):
+    """
+    Index page for breads.
+    
+    This is more complex than other index pages on the bakery demo site as we've
+    included pagination. We've separated the different aspects of the index page
+    to be discrete functions to make it easier to follow
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+```
+
+### Pagination
+
+The index page includes built-in pagination displaying 12 breads per page:
+
+```python
+def paginate(self, request, *args):
+    page = request.GET.get("page")
+    paginator = Paginator(self.get_breads(), 12)
+    try:
+        pages = paginator.page(page)
+    except PageNotAnInteger:
+        pages = paginator.page(1)
+    except EmptyPage:
+        pages = paginator.page(paginator.num_pages)
+    return pages
+```
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="get_breads()" icon="bread-slice">
+    Returns all live bread pages ordered by publication date.
+    
+    ```python
+    def get_breads(self):
+        return (
+            BreadPage.objects
+            .live()
+            .descendant_of(self)
+            .order_by("-first_published_at")
+        )
+    ```
+  </Card>
+  
+  <Card title="children()" icon="list">
+    Returns live child pages with their specific types.
+    
+    ```python
+    def children(self):
+        return self.get_children().specific().live()
+    ```
+  </Card>
+  
+  <Card title="get_context()" icon="brackets-curly">
+    Provides paginated breads to the template.
+    
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        breads = self.paginate(request, self.get_breads())
+        context["breads"] = breads
+        return context
+    ```
+  </Card>
+</CardGroup>
+
+### Page Hierarchy
+
+<Note>
+  **Children:** BreadsIndexPage can only have `BreadPage` children.
+</Note>
+
+## Country Snippet
+
+Stores countries of origin for bread products.
+
+### Model Definition
+
+```python bakerydemo/breads/models.py
+class Country(models.Model):
+    """
+    A Django model to store set of countries of origin.
+    It is made accessible in the Wagtail admin interface through the 
+    CountrySnippetViewSet class in wagtail_hooks.py.
+    """
+    title = models.CharField(max_length=100)
+    sort_order = models.IntegerField(null=True, blank=True, db_index=True)
+    
+    class Meta:
+        verbose_name = "country of origin"
+        verbose_name_plural = "countries of origin"
+```
+
+<Note>
+  Country uses a simple model (not ClusterableModel) and is registered as a snippet through `CountrySnippetViewSet` in `wagtail_hooks.py`.
+</Note>
+
+## BreadIngredient Snippet
+
+Represents individual ingredients with revision and draft support.
+
+### Model Definition
+
+```python bakerydemo/breads/models.py
+class BreadIngredient(Orderable, DraftStateMixin, RevisionMixin, models.Model):
+    """
+    A Django model to store a single ingredient.
+    It uses DraftStateMixin and RevisionMixin to support drafts and revisions.
+    """
+    name = models.CharField(max_length=255)
+    
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="bread_ingredient",
+        for_concrete_model=False,
+    )
+    
+    panels = [
+        FieldPanel("name"),
+    ]
+    
+    class Meta:
+        verbose_name = "bread ingredient"
+        verbose_name_plural = "bread ingredients"
+        ordering = ["sort_order", "name"]
+```
+
+### Features
+
+<CardGroup cols={2}>
+  <Card title="Draft Support" icon="file-dashed">
+    `DraftStateMixin` enables draft/live states for ingredients.
+  </Card>
+  
+  <Card title="Revision History" icon="clock-rotate-left">
+    `RevisionMixin` tracks changes over time with full revision history.
+  </Card>
+  
+  <Card title="Ordering" icon="arrow-down-1-9">
+    `Orderable` allows manual drag-and-drop ordering in the admin.
+  </Card>
+</CardGroup>
+
+<Note>
+  The `GenericRelation` for revisions is required when using `RevisionMixin` on a non-Page model.
+</Note>
+
+## BreadType Snippet
+
+Defines types of bread (e.g., sourdough, rye, whole wheat).
+
+### Model Definition
+
+```python bakerydemo/breads/models.py
+class BreadType(RevisionMixin, models.Model):
+    """
+    A Django model to define the bread type
+    It is made accessible in the Wagtail admin interface through the 
+    BreadTypeSnippetViewSet class in wagtail_hooks.py.
+    """
+    title = models.CharField(max_length=255)
+    
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="bread_type",
+        for_concrete_model=False,
+    )
+    
+    panels = [
+        FieldPanel("title"),
+    ]
+    
+    class Meta:
+        verbose_name = "bread type"
+        verbose_name_plural = "bread types"
+```
+
+<Note>
+  BreadType includes `RevisionMixin` for tracking changes but does not have draft/live states.
+</Note>
+
+## Snippet Registration
+
+All bread-related snippets are registered in `wagtail_hooks.py` using `SnippetViewSet`:
+
+- `CountrySnippetViewSet` - Manages countries of origin
+- `BreadIngredientSnippetViewSet` - Manages ingredients with revision support
+- `BreadTypeSnippetViewSet` - Manages bread type classifications
+
+This provides a customized admin interface for each snippet type.
+
+## Usage Example
+
+1. Create ingredient snippets (e.g., "Flour", "Water", "Yeast")
+2. Create bread type snippets (e.g., "Sourdough", "Rye")
+3. Create country snippets (e.g., "France", "Germany")
+4. Create a `BreadsIndexPage`
+5. Add `BreadPage` instances with selected ingredients, types, and origins
+6. Pages automatically appear in the paginated index

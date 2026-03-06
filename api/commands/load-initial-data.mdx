@@ -1,0 +1,123 @@
+---
+title: 'load_initial_data'
+description: 'Load fixture data and media files to bootstrap the Wagtail Bakery Demo'
+icon: 'database'
+---
+
+## Overview
+
+The `load_initial_data` management command loads the complete bakery demo dataset from a fixture file (`bakerydemo.json`) and copies associated media files to the configured storage backend. This command is essential for setting up a fresh instance of the Wagtail Bakery Demo with sample content.
+
+<Note>
+This command automatically handles both local file storage and cloud storage providers (like AWS S3) by copying media files to the configured `default_storage` backend.
+</Note>
+
+## What It Does
+
+The command performs the following operations in sequence:
+
+<Steps>
+  <Step title="Copy Media Files">
+    Recursively copies all media files from `bakerydemo/base/fixtures/media/` to the configured storage backend (local filesystem or cloud storage)
+  </Step>
+  
+  <Step title="Clean Default Content">
+    Removes auto-generated Wagtail site and page instances:
+    - Deletes the default localhost site
+    - Removes the "Welcome to your new Wagtail site!" page
+  </Step>
+  
+  <Step title="Load Fixture Data">
+    Loads the complete database fixture from `bakerydemo.json` containing:
+    - Page structure (HomePage, Blog, Breads, Locations)
+    - Snippets (People, Countries, Bread Types, Ingredients)
+    - Images and documents
+    - Site configuration
+  </Step>
+  
+  <Step title="Update Search Index">
+    Rebuilds the Wagtail search index for all pages
+  </Step>
+  
+  <Step title="Rebuild References">
+    Rebuilds the references index for content relationships
+  </Step>
+</Steps>
+
+## Usage
+
+```bash
+python manage.py load_initial_data
+```
+
+## Command Arguments
+
+This command does not accept any arguments or options.
+
+## Example Output
+
+```bash
+$ python manage.py load_initial_data
+Copying media files to configured storage...
+Awesome. Your data is loaded! The bakery's doors are almost ready to open...
+```
+
+## Source Code Location
+
+`bakerydemo/base/management/commands/load_initial_data.py`
+
+## Implementation Details
+
+### File Storage Handling
+
+The command uses a recursive `_copy_files()` method to traverse the fixtures media directory:
+
+```python
+def _copy_files(self, local_storage, path):
+    """
+    Recursively copy files from local_storage to default_storage.
+    """
+    directories, file_names = local_storage.listdir(path)
+    for directory in directories:
+        self._copy_files(local_storage, path + directory + "/")
+    for file_name in file_names:
+        with local_storage.open(path + file_name) as file_:
+            default_storage.save(path + file_name, file_)
+```
+
+This approach ensures media files work correctly whether you're using local storage or cloud providers like AWS S3.
+
+### Fixture Data
+
+The fixture file is loaded from:
+```
+bakerydemo/base/fixtures/bakerydemo.json
+```
+
+This JSON file contains approximately 542KB of serialized Django model data.
+
+<Warning>
+This command will fail if:
+- The `bakerydemo.json` fixture file is missing or corrupted
+- The fixtures media directory is not accessible
+- Database migrations have not been applied
+- The configured storage backend is not accessible
+</Warning>
+
+## When to Use
+
+- **Initial Setup**: When deploying a new instance of the Wagtail Bakery Demo
+- **Development**: Resetting your local development environment to a known state
+- **Testing**: Setting up test environments with consistent sample data
+- **Demos**: Preparing environments for demonstrations or presentations
+
+## Related Commands
+
+- [`reset_demo`](/api/commands/reset-demo) - Completely resets the database and reloads initial data
+- [`create_random_data`](/api/commands/create-random-data) - Creates additional random test data
+- [`reset_admin_password`](/api/commands/reset-admin-password) - Resets the admin user password
+
+## See Also
+
+- [Django loaddata documentation](https://docs.djangoproject.com/en/stable/ref/django-admin/#loaddata)
+- [Wagtail search index management](https://docs.wagtail.org/en/stable/topics/search/indexing.html)

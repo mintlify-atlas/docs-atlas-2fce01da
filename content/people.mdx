@@ -1,0 +1,571 @@
+---
+title: People Snippet & Pages
+description: Person snippet with workflow, revisions, locking, and PersonPage for team member profiles
+---
+
+The people functionality includes both a powerful Person snippet with advanced Wagtail features and PersonPage for public-facing team member profiles.
+
+## Person Snippet
+
+A sophisticated snippet demonstrating workflow, draft states, revisions, locking, and preview capabilities.
+
+### Model Definition
+
+```python bakerydemo/base/models.py
+class Person(
+    WorkflowMixin,
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    index.Indexed,
+    ClusterableModel,
+):
+    """
+    A Django model to store Person objects.
+    It is registered using `register_snippet` as a function in wagtail_hooks.py
+    
+    `Person` uses the `ClusterableModel`, which allows the relationship with
+    another model to be stored locally to the 'parent' model until the parent 
+    is explicitly saved.
+    """
+    first_name = models.CharField("First name", max_length=254)
+    last_name = models.CharField("Last name", max_length=254)
+    job_title = models.CharField("Job title", max_length=254)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+```
+
+### Advanced Mixins
+
+The Person snippet uses multiple mixins to enable advanced features:
+
+<CardGroup cols={2}>
+  <Card title="WorkflowMixin" icon="diagram-project">
+    Enables Wagtail workflows for approval processes.
+    
+    ```python
+    workflow_states = GenericRelation(
+        "wagtailcore.WorkflowState",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="person",
+        for_concrete_model=False,
+    )
+    ```
+  </Card>
+  
+  <Card title="DraftStateMixin" icon="file-dashed">
+    Provides draft/live state management.
+    
+    Person records can exist in draft form before being published live.
+  </Card>
+  
+  <Card title="LockableMixin" icon="lock">
+    Enables locking to prevent concurrent edits.
+    
+    Prevents multiple editors from editing the same person simultaneously.
+  </Card>
+  
+  <Card title="RevisionMixin" icon="clock-rotate-left">
+    Tracks full revision history.
+    
+    ```python
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="person",
+        for_concrete_model=False,
+    )
+    ```
+  </Card>
+  
+  <Card title="PreviewableMixin" icon="eye">
+    Enables preview before publishing.
+    
+    Supports multiple preview modes including blog post context.
+  </Card>
+  
+  <Card title="ClusterableModel" icon="layer-group">
+    Enables draft-aware relationships.
+    
+    Relationships can be previewed before saving to the database.
+  </Card>
+</CardGroup>
+
+### Fields
+
+<ParamField path="first_name" type="CharField">
+  Person's first name. Required. Maximum 254 characters.
+</ParamField>
+
+<ParamField path="last_name" type="CharField">
+  Person's last name. Required. Maximum 254 characters.
+</ParamField>
+
+<ParamField path="job_title" type="CharField">
+  Person's job title or role. Required. Maximum 254 characters.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Profile photo for the person. Optional.
+</ParamField>
+
+### Admin Configuration
+
+<Tabs>
+  <Tab title="Admin Panels">
+    ```python
+    panels = [
+        MultiFieldPanel(
+            [
+                FieldRowPanel(
+                    [
+                        FieldPanel("first_name"),
+                        FieldPanel("last_name"),
+                    ]
+                )
+            ],
+            "Name",
+        ),
+        FieldPanel("job_title"),
+        FieldPanel("image"),
+        PublishingPanel(),
+    ]
+    ```
+    
+    - First and last name appear side-by-side using `FieldRowPanel`
+    - `PublishingPanel` provides draft/live controls
+  </Tab>
+  
+  <Tab title="Search Configuration">
+    ```python
+    search_fields = [
+        index.SearchField("first_name"),
+        index.SearchField("last_name"),
+        index.FilterField("job_title"),
+        index.AutocompleteField("first_name"),
+        index.AutocompleteField("last_name"),
+    ]
+    ```
+    
+    Supports:
+    - Full-text search on names
+    - Filtering by job title
+    - Autocomplete for name fields
+  </Tab>
+  
+  <Tab title="API Fields">
+    ```python
+    api_fields = [
+        APIField("first_name"),
+        APIField("last_name"),
+        APIField("job_title"),
+        APIField("image"),
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Preview Functionality
+
+The Person snippet includes sophisticated preview capabilities:
+
+```python
+@property
+def preview_modes(self):
+    return PreviewableMixin.DEFAULT_PREVIEW_MODES + [("blog_post", _("Blog post"))]
+
+def get_preview_template(self, request, mode_name):
+    from bakerydemo.blog.models import BlogPage
+    
+    if mode_name == "blog_post":
+        return BlogPage.template
+    return "base/preview/person.html"
+
+def get_preview_context(self, request, mode_name):
+    from bakerydemo.blog.models import BlogPage
+    
+    context = super().get_preview_context(request, mode_name)
+    if mode_name == self.default_preview_mode:
+        return context
+    
+    # Find a blog post by this author
+    page = BlogPage.objects.filter(blog_person_relationship__person=self).first()
+    if page:
+        page.authors = [
+            self if author.pk == self.pk else author for author in page.authors()
+        ]
+        if not self.live:
+            page.authors.append(self)
+    else:
+        page = BlogPage.objects.first()
+        page.authors = [self]
+    
+    context["page"] = page
+    return context
+```
+
+<Note>
+  The preview system allows editors to see how a person will appear in different contexts (standalone or as a blog author) before publishing.
+</Note>
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="__str__()" icon="text">
+    String representation combining first and last name.
+    
+    ```python
+    def __str__(self):
+        return "{} {}".format(self.first_name, self.last_name)
+    ```
+  </Card>
+  
+  <Card title="thumb_image" icon="image">
+    Property to get a 50x50 thumbnail for admin listings.
+    
+    ```python
+    @property
+    def thumb_image(self):
+        try:
+            return self.image.get_rendition("fill-50x50").img_tag()
+        except:
+            return ""
+    ```
+  </Card>
+</CardGroup>
+
+### Workflow Integration
+
+Person snippets can be integrated with Wagtail's workflow system:
+
+1. Editors create/edit Person records
+2. Changes are saved as drafts
+3. Workflow is triggered for approval
+4. Reviewers can approve or reject changes
+5. Upon approval, the Person is published live
+6. History is tracked via revisions
+
+<Note>
+  The `GenericRelation` for `workflow_states` and `revisions` is required when using these mixins on non-Page models.
+</Note>
+
+## PersonPage
+
+Public-facing page for team member profiles with social media links.
+
+### Model Definition
+
+```python bakerydemo/people/models.py
+class PersonPage(Page):
+    """
+    Detail view for a specific person
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(BaseStreamBlock(), verbose_name="Page body", blank=True)
+    location = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    social_links = StreamField(
+        [("social", SocialMediaBlock())],
+        blank=True,
+        help_text="Add social media profiles",
+    )
+```
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Brief introduction or bio for the team member. Optional.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Profile photo or hero image. Should be landscape mode with horizontal width between 1000px and 3000px.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Full biography and details using `BaseStreamBlock`.
+</ParamField>
+
+<ParamField path="location" type="ForeignKey">
+  Team member's location/country. Links to the `Country` snippet from the breads app.
+</ParamField>
+
+<ParamField path="social_links" type="StreamField">
+  Social media profile links using the custom `SocialMediaBlock`.
+</ParamField>
+
+### Social Media Block
+
+Custom StructBlock for social media profiles:
+
+```python bakerydemo/people/models.py
+class SocialMediaBlock(StructBlock):
+    platform = ChoiceBlock(
+        choices=[
+            ("github", "GitHub"),
+            ("twitter", "Twitter/X"),
+            ("linkedin", "LinkedIn"),
+            ("instagram", "Instagram"),
+            ("facebook", "Facebook"),
+            ("mastodon", "Mastodon"),
+            ("website", "Personal Website"),
+        ],
+        help_text="Select the social media platform",
+    )
+    url = URLBlock(
+        label="URL",
+        help_text="Full URL to your profile (e.g., https://github.com/username)",
+    )
+    
+    class Meta:
+        icon = "link"
+        label = "Social Media Link"
+        value_class = SocialMediaValue
+```
+
+The custom `SocialMediaValue` provides helper methods:
+
+```python
+class SocialMediaValue(StructValue):
+    def get_platform_label(self):
+        return dict(self.block.child_blocks["platform"].field.choices).get(
+            self["platform"]
+        )
+```
+
+### Admin Configuration
+
+<Tabs>
+  <Tab title="Content Panels">
+    ```python
+    content_panels = Page.content_panels + [
+        FieldPanel("introduction"),
+        FieldPanel("image"),
+        FieldPanel("location"),
+        FieldPanel("body"),
+        FieldPanel("social_links"),
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="Search Configuration">
+    ```python
+    search_fields = Page.search_fields + [
+        index.SearchField("introduction"),
+        index.SearchField("body"),
+    ]
+    ```
+  </Tab>
+  
+  <Tab title="API Fields">
+    ```python
+    api_fields = [
+        APIField("introduction"),
+        APIField("image"),
+        APIField("body"),
+        APIField("location"),
+        APIField("social_links"),
+    ]
+    ```
+  </Tab>
+</Tabs>
+
+### Template Context
+
+The `get_context()` method enhances social links with readable labels:
+
+```python
+def get_context(self, request):
+    context = super(PersonPage, self).get_context(request)
+    
+    platform_block = SocialMediaBlock().child_blocks["platform"]
+    platform_labels = dict(platform_block.field.choices)
+    social_links = [
+        {
+            "platform": link.value["platform"],
+            "label": platform_labels.get(
+                link.value["platform"], link.value["platform"]
+            ),
+            "url": link.value["url"],
+        }
+        for link in (self.social_links or [])
+    ]
+    
+    context["social_links"] = social_links
+    return context
+```
+
+This transforms the social links into a template-friendly format:
+
+```python
+[
+    {
+        "platform": "github",
+        "label": "GitHub",
+        "url": "https://github.com/username"
+    },
+    {
+        "platform": "twitter",
+        "label": "Twitter/X",
+        "url": "https://twitter.com/username"
+    }
+]
+```
+
+### Page Hierarchy
+
+<Note>
+  **Parent:** PersonPage can only be created under `PeopleIndexPage`.
+</Note>
+
+## PeopleIndexPage
+
+Index page listing all team members with pagination.
+
+### Model Definition
+
+```python bakerydemo/people/models.py
+class PeopleIndexPage(Page):
+    """
+    Index page for people.
+    Lists all People objects with pagination.
+    """
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+```
+
+### Pagination
+
+The index page includes pagination displaying 12 people per page:
+
+```python
+def paginate(self, request, *args):
+    page = request.GET.get("page")
+    paginator = Paginator(self.get_people(), 12)
+    try:
+        pages = paginator.page(page)
+    except PageNotAnInteger:
+        pages = paginator.page(1)
+    except EmptyPage:
+        pages = paginator.page(paginator.num_pages)
+    return pages
+```
+
+### Helper Methods
+
+<CardGroup cols={2}>
+  <Card title="get_people()" icon="users">
+    Returns all live person pages ordered by publication date.
+    
+    ```python
+    def get_people(self):
+        return (
+            PersonPage.objects
+            .live()
+            .descendant_of(self)
+            .order_by("-first_published_at")
+        )
+    ```
+  </Card>
+  
+  <Card title="children()" icon="list">
+    Returns live child pages with specific types.
+    
+    ```python
+    def children(self):
+        return self.get_children().specific().live()
+    ```
+  </Card>
+  
+  <Card title="get_context()" icon="brackets-curly">
+    Provides paginated people to the template.
+    
+    ```python
+    def get_context(self, request):
+        context = super().get_context(request)
+        people = self.paginate(request, self.get_people())
+        context["people"] = people
+        return context
+    ```
+  </Card>
+</CardGroup>
+
+### Page Hierarchy
+
+<Note>
+  **Children:** PeopleIndexPage can only have `PersonPage` children.
+</Note>
+
+## Usage Examples
+
+### Using the Person Snippet
+
+1. Navigate to Snippets > People in the Wagtail admin
+2. Create a new Person record
+3. Fill in first name, last name, job title
+4. Upload a profile image
+5. Save as draft to preview
+6. Submit for workflow approval (if workflows are configured)
+7. Publish when approved
+8. Use the person in blog posts or recipes via the author chooser
+
+### Using PersonPage
+
+1. Create a `PeopleIndexPage` under your home page
+2. Add `PersonPage` instances for each team member
+3. Fill in introduction and body content
+4. Add social media links:
+   - Select platform (GitHub, LinkedIn, etc.)
+   - Enter full profile URL
+5. Select location/country if applicable
+6. Pages appear in paginated index
+
+## Differences: Snippet vs Page
+
+<CardGroup cols={2}>
+  <Card title="Person Snippet" icon="puzzle-piece">
+    - Used for internal references (blog authors, recipe authors)
+    - Includes workflow, drafts, locking, revisions
+    - No public URL
+    - Minimal fields (name, title, image)
+    - Preview in context of blog posts
+  </Card>
+  
+  <Card title="PersonPage" icon="file-user">
+    - Public-facing team member profiles
+    - Standard page with URL
+    - Rich content with StreamField
+    - Social media integration
+    - Can be listed, searched, and indexed
+  </Card>
+</CardGroup>
+
+<Note>
+  You can use both systems together: maintain Person snippets for authorship and PersonPage for public team profiles. They serve different purposes in the content architecture.
+</Note>

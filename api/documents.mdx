@@ -1,0 +1,432 @@
+---
+title: 'Documents API'
+description: 'Access document files through the Wagtail REST API'
+---
+
+## Overview
+
+The Documents API endpoint provides access to all documents (PDFs, Word files, spreadsheets, etc.) uploaded to the Wagtail CMS. You can retrieve document metadata and download links.
+
+## Endpoint
+
+```
+GET /api/v2/documents/
+```
+
+## List All Documents
+
+Retrieve a list of all documents:
+
+<CodeGroup>
+```bash curl
+curl http://localhost:8000/api/v2/documents/
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/documents/')
+documents = response.json()
+```
+
+```javascript JavaScript
+fetch('http://localhost:8000/api/v2/documents/')
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "meta": {
+    "total_count": 8
+  },
+  "items": [
+    {
+      "id": 1,
+      "meta": {
+        "type": "wagtaildocs.Document",
+        "detail_url": "http://localhost:8000/api/v2/documents/1/"
+      },
+      "title": "Bakery Menu 2024"
+    }
+  ]
+}
+```
+
+## Get Single Document
+
+Retrieve a specific document by ID:
+
+<CodeGroup>
+```bash curl
+curl http://localhost:8000/api/v2/documents/1/
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/documents/1/')
+document = response.json()
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "id": 1,
+  "meta": {
+    "type": "wagtaildocs.Document",
+    "detail_url": "http://localhost:8000/api/v2/documents/1/",
+    "download_url": "http://localhost:8000/documents/1/bakery_menu_2024.pdf"
+  },
+  "title": "Bakery Menu 2024"
+}
+```
+
+## Query Parameters
+
+<ParamField query="fields" type="string">
+  Comma-separated list of fields to include. Use `*` for all fields.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Number of results per page (max 100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of results to skip
+</ParamField>
+
+<ParamField query="order" type="string">
+  Field to order by. Prefix with `-` for descending (e.g., `-created_at`)
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search query to filter documents by title and tags
+</ParamField>
+
+## Response Fields
+
+### Default Fields
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the document
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  The document title
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Metadata about the document
+  
+  <ResponseField name="type" type="string">
+    The document model type (typically `wagtaildocs.Document`)
+  </ResponseField>
+  
+  <ResponseField name="detail_url" type="string">
+    API URL for the full document details
+  </ResponseField>
+  
+  <ResponseField name="download_url" type="string">
+    URL to download the document file
+  </ResponseField>
+</ResponseField>
+
+### All Fields
+
+Request all fields using `?fields=*`:
+
+```bash
+curl "http://localhost:8000/api/v2/documents/1/?fields=*"
+```
+
+#### Complete Response
+
+```json
+{
+  "id": 1,
+  "meta": {
+    "type": "wagtaildocs.Document",
+    "detail_url": "http://localhost:8000/api/v2/documents/1/",
+    "download_url": "http://localhost:8000/documents/1/bakery_menu_2024.pdf"
+  },
+  "title": "Bakery Menu 2024",
+  "file": "/media/documents/bakery_menu_2024.pdf",
+  "file_size": 1048576,
+  "file_hash": "xyz789abc123",
+  "created_at": "2024-01-15T10:30:00Z",
+  "uploaded_by_user": null
+}
+```
+
+<ResponseField name="file" type="string">
+  Relative path to the document file
+</ResponseField>
+
+<ResponseField name="file_size" type="integer">
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="file_hash" type="string">
+  Hash of the document file for duplicate detection
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp when the document was uploaded
+</ResponseField>
+
+<ResponseField name="uploaded_by_user" type="object|null">
+  Information about the user who uploaded the document (if available)
+</ResponseField>
+
+## Downloading Documents
+
+The `download_url` field in the `meta` object provides a direct link to download the document:
+
+<CodeGroup>
+```bash curl
+# Get document metadata
+curl http://localhost:8000/api/v2/documents/1/ > document.json
+
+# Extract download URL and download file
+DOWNLOAD_URL=$(jq -r '.meta.download_url' document.json)
+curl -O "$DOWNLOAD_URL"
+```
+
+```python Python
+import requests
+
+# Get document metadata
+response = requests.get('http://localhost:8000/api/v2/documents/1/')
+document = response.json()
+
+# Download the file
+download_url = document['meta']['download_url']
+file_response = requests.get(download_url)
+
+with open('downloaded_file.pdf', 'wb') as f:
+    f.write(file_response.content)
+```
+
+```javascript JavaScript
+// Get document metadata
+fetch('http://localhost:8000/api/v2/documents/1/')
+  .then(response => response.json())
+  .then(document => {
+    // Download the file
+    const downloadUrl = document.meta.download_url;
+    window.open(downloadUrl, '_blank');
+  });
+```
+</CodeGroup>
+
+## Common Use Cases
+
+### List Recent Documents
+
+Get the most recently uploaded documents:
+
+```bash
+curl "http://localhost:8000/api/v2/documents/?fields=*&order=-created_at&limit=10"
+```
+
+### Search Documents
+
+Find documents by title:
+
+```bash
+curl "http://localhost:8000/api/v2/documents/?search=menu"
+```
+
+### Get Document with Metadata
+
+Retrieve full document information including file size and upload date:
+
+```bash
+curl "http://localhost:8000/api/v2/documents/1/?fields=title,file_size,created_at,file"
+```
+
+## File Types
+
+Wagtail supports various document formats:
+
+| Category | File Types |
+|----------|------------|
+| PDF | `.pdf` |
+| Word | `.doc`, `.docx` |
+| Excel | `.xls`, `.xlsx` |
+| PowerPoint | `.ppt`, `.pptx` |
+| Text | `.txt`, `.rtf` |
+| Archive | `.zip`, `.tar`, `.gz` |
+| Other | Any file type allowed by configuration |
+
+<Note>
+  The allowed file types can be configured in Wagtail's settings. Check with your administrator for the specific file types supported in your installation.
+</Note>
+
+## File Size Information
+
+The `file_size` field returns the size in bytes. Convert to human-readable format:
+
+<CodeGroup>
+```python Python
+def format_file_size(bytes):
+    """Convert bytes to human-readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes < 1024:
+            return f"{bytes:.2f} {unit}"
+        bytes /= 1024
+    return f"{bytes:.2f} TB"
+
+# Example
+response = requests.get('http://localhost:8000/api/v2/documents/1/?fields=file_size')
+file_size = response.json()['file_size']
+print(format_file_size(file_size))  # Output: 1.00 MB
+```
+
+```javascript JavaScript
+function formatFileSize(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${size.toFixed(2)} ${units[unitIndex]}`;
+}
+
+// Example
+fetch('http://localhost:8000/api/v2/documents/1/?fields=file_size')
+  .then(response => response.json())
+  .then(data => {
+    console.log(formatFileSize(data.file_size));  // Output: 1.00 MB
+  });
+```
+</CodeGroup>
+
+## Pagination Example
+
+Iterate through all documents:
+
+<CodeGroup>
+```python Python
+import requests
+
+def get_all_documents():
+    """Fetch all documents using pagination"""
+    documents = []
+    offset = 0
+    limit = 50
+    
+    while True:
+        response = requests.get(
+            'http://localhost:8000/api/v2/documents/',
+            params={'limit': limit, 'offset': offset, 'fields': '*'}
+        )
+        data = response.json()
+        
+        documents.extend(data['items'])
+        
+        # Break if we've fetched all documents
+        if len(data['items']) < limit:
+            break
+            
+        offset += limit
+    
+    return documents
+
+all_docs = get_all_documents()
+print(f"Total documents: {len(all_docs)}")
+```
+
+```bash Bash
+#!/bin/bash
+
+# Fetch all documents using pagination
+OFFSET=0
+LIMIT=50
+ALL_DOCS="[]"
+
+while true; do
+    RESPONSE=$(curl -s "http://localhost:8000/api/v2/documents/?limit=$LIMIT&offset=$OFFSET&fields=*")
+    ITEMS=$(echo "$RESPONSE" | jq -r '.items')
+    ITEMS_COUNT=$(echo "$ITEMS" | jq 'length')
+    
+    # Merge items
+    ALL_DOCS=$(echo "$ALL_DOCS" | jq ". + $ITEMS")
+    
+    # Break if we've fetched all documents
+    if [ "$ITEMS_COUNT" -lt "$LIMIT" ]; then
+        break
+    fi
+    
+    OFFSET=$((OFFSET + LIMIT))
+done
+
+echo "Total documents: $(echo "$ALL_DOCS" | jq 'length')"
+```
+</CodeGroup>
+
+## Best Practices
+
+### Check File Size Before Download
+
+For large files, check the file size before downloading:
+
+```python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/documents/1/?fields=file_size')
+file_size_mb = response.json()['file_size'] / (1024 * 1024)
+
+if file_size_mb > 10:
+    print(f"Warning: Large file ({file_size_mb:.2f} MB)")
+```
+
+### Use Specific Fields
+
+Only request the fields you need:
+
+```bash
+# Good: Request specific fields
+curl "http://localhost:8000/api/v2/documents/?fields=title,file_size,created_at"
+
+# Avoid: Requesting all fields when you don't need them
+curl "http://localhost:8000/api/v2/documents/?fields=*"
+```
+
+### Handle Download Errors
+
+Always handle potential download errors:
+
+```python
+import requests
+
+try:
+    doc_response = requests.get('http://localhost:8000/api/v2/documents/1/')
+    doc_response.raise_for_status()
+    
+    download_url = doc_response.json()['meta']['download_url']
+    
+    file_response = requests.get(download_url)
+    file_response.raise_for_status()
+    
+    with open('document.pdf', 'wb') as f:
+        f.write(file_response.content)
+except requests.exceptions.RequestException as e:
+    print(f"Download failed: {e}")
+```
+
+## Next Steps
+
+- Learn about [Pages API](/api/pages) for accessing page content
+- Explore [Images API](/api/images) for image assets
+- Review [API Overview](/api/overview) for authentication and common patterns

@@ -1,0 +1,552 @@
+---
+title: "Docker Deployment"
+description: "Deploy the Wagtail Bakery Demo using Docker and docker-compose"
+---
+
+## Overview
+
+The Wagtail Bakery Demo includes a complete Docker setup with a multi-stage Dockerfile and docker-compose configuration for easy deployment in containerized environments.
+
+## Prerequisites
+
+Before deploying with Docker, ensure you have:
+
+- Docker Engine 20.10 or higher
+- Docker Compose 2.0 or higher
+- At least 2GB of available RAM
+- 10GB of available disk space
+
+## Docker Architecture
+
+The docker-compose setup includes three services:
+
+```yaml
+services:
+  db:       # PostgreSQL 18.1
+  redis:    # Redis 8.4
+  app:      # Django application
+```
+
+## Dockerfile Overview
+
+The production Dockerfile is optimized for size and security:
+
+<Steps>
+  <Step title="Base Image">
+    Uses Python 3.12 slim image for minimal footprint:
+    
+    ```dockerfile
+    FROM python:3.12-slim
+    ```
+  </Step>
+  
+  <Step title="Runtime Dependencies">
+    Installs essential system packages:
+    
+    - `libpq5` - PostgreSQL client library
+    - `libjpeg62-turbo` - JPEG image processing
+    - `libpcre2-posix3` - Regular expressions
+    - `postgresql-client` - Database utilities
+    - `shared-mime-info` - MIME type detection
+  </Step>
+  
+  <Step title="Python Dependencies">
+    Creates a virtual environment and installs Python packages:
+    
+    ```dockerfile
+    ENV VIRTUAL_ENV=/venv PATH=/venv/bin:$PATH
+    RUN python3.12 -m venv ${VIRTUAL_ENV}
+    RUN python3.12 -m pip install --no-cache-dir -r /requirements/production.txt
+    ```
+    
+    Build dependencies are removed after installation to reduce image size.
+  </Step>
+  
+  <Step title="Static Files Collection">
+    Collects static files during build with dummy environment variables:
+    
+    ```dockerfile
+    RUN DATABASE_URL=postgres://none REDIS_URL=none python manage.py collectstatic --noinput
+    ```
+  </Step>
+  
+  <Step title="Media Directories">
+    Creates and configures media upload directories:
+    
+    ```dockerfile
+    RUN mkdir -p /code/bakerydemo/media/images && \
+        mkdir -p /code/bakerydemo/media/original_images && \
+        chown -R 1000:2000 /code/bakerydemo/media
+    ```
+  </Step>
+</Steps>
+
+## Quick Start with docker-compose
+
+### Basic Setup
+
+Clone the repository and start the services:
+
+```bash
+# Clone the repository
+git clone https://github.com/wagtail/bakerydemo.git
+cd bakerydemo
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f app
+```
+
+The application will be available at `http://localhost:8000`.
+
+### docker-compose Configuration
+
+The default `docker-compose.yml` configuration:
+
+<CodeGroup>
+```yaml docker-compose.yml
+version: '2'
+
+services:
+  db:
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: changeme
+    restart: unless-stopped
+    image: postgres:18.1
+    expose:
+      - '5432'
+
+  redis:
+    restart: unless-stopped
+    image: redis:8.4
+    expose:
+      - '6379'
+
+  app:
+    environment:
+      DJANGO_SECRET_KEY: changeme
+      DATABASE_URL: postgres://app_user:changeme@db/app_db
+      REDIS_URL: redis://redis
+      DJANGO_SETTINGS_MODULE: bakerydemo.settings.dev
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./bakerydemo:/code/bakerydemo
+    links:
+      - db:db
+      - redis:redis
+    ports:
+      - '8000:8000'
+    depends_on:
+      - db
+      - redis
+```
+</CodeGroup>
+
+<Warning>
+  **Security Notice**: Change the default passwords and secret keys before deploying to production!
+</Warning>
+
+## Production Docker Deployment
+
+### Production docker-compose Configuration
+
+Create a `docker-compose.prod.yml` file for production:
+
+<CodeGroup>
+```yaml docker-compose.prod.yml
+version: '2'
+
+services:
+  db:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: always
+    image: postgres:18.1
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - '5432'
+
+  redis:
+    restart: always
+    image: redis:8.4
+    volumes:
+      - redis_data:/data
+    expose:
+      - '6379'
+
+  app:
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
+      REDIS_URL: redis://redis
+      DJANGO_SETTINGS_MODULE: bakerydemo.settings.production
+      DJANGO_DEBUG: off
+      DJANGO_ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      PRIMARY_HOST: ${PRIMARY_HOST}
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - media_files:/code/bakerydemo/media
+    links:
+      - db:db
+      - redis:redis
+    ports:
+      - '8000:8000'
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_files:
+```
+
+```.env .env.production
+# Database
+POSTGRES_DB=bakerydemo_prod
+POSTGRES_USER=bakery_user
+POSTGRES_PASSWORD=your-secure-password-here
+
+# Django
+DJANGO_SECRET_KEY=your-secret-key-here-min-50-chars
+ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+PRIMARY_HOST=yourdomain.com
+
+# Optional: AWS S3 for media storage
+# AWS_STORAGE_BUCKET_NAME=your-bucket
+# AWS_ACCESS_KEY_ID=your-access-key
+# AWS_SECRET_ACCESS_KEY=your-secret-key
+
+# Optional: Elasticsearch
+# ELASTICSEARCH_ENDPOINT=your-elasticsearch-host
+# ELASTICSEARCH_PORT=9200
+```
+</CodeGroup>
+
+### Deploy to Production
+
+<Steps>
+  <Step title="Create Environment File">
+    Create a `.env.production` file with your production credentials:
+    
+    ```bash
+    # Generate a secure secret key
+    python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+    ```
+  </Step>
+  
+  <Step title="Build the Image">
+    Build the production Docker image:
+    
+    ```bash
+    docker-compose -f docker-compose.prod.yml build
+    ```
+  </Step>
+  
+  <Step title="Start Services">
+    Start all services in detached mode:
+    
+    ```bash
+    docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+    ```
+  </Step>
+  
+  <Step title="Run Migrations">
+    The entrypoint script automatically runs migrations, but you can run them manually:
+    
+    ```bash
+    docker-compose -f docker-compose.prod.yml exec app python manage.py migrate
+    ```
+  </Step>
+  
+  <Step title="Create Superuser">
+    Create an admin user:
+    
+    ```bash
+    docker-compose -f docker-compose.prod.yml exec app python manage.py createsuperuser
+    ```
+  </Step>
+  
+  <Step title="Load Initial Data (Optional)">
+    Load demo data if needed:
+    
+    ```bash
+    docker-compose -f docker-compose.prod.yml exec app python manage.py load_initial_data
+    ```
+    
+    Or set the environment variable:
+    ```bash
+    DJANGO_LOAD_INITIAL_DATA=on
+    ```
+  </Step>
+</Steps>
+
+## Docker Entrypoint
+
+The `docker-entrypoint.sh` script handles startup tasks:
+
+<CodeGroup>
+```bash docker-entrypoint.sh
+#!/bin/sh
+set -e
+
+# Wait for PostgreSQL to be ready
+until psql $DATABASE_URL -c '\q'; do
+  >&2 echo "Postgres is unavailable - sleeping"
+  sleep 1
+done
+
+>&2 echo "Postgres is up - continuing"
+
+# Run migrations if starting uWSGI
+if [ "$1" = '/venv/bin/uwsgi' ]; then
+    /venv/bin/python manage.py migrate --noinput
+fi
+
+# Load initial data if requested
+if [ "x$DJANGO_LOAD_INITIAL_DATA" = 'xon' ]; then
+	/venv/bin/python manage.py load_initial_data
+fi
+
+exec "$@"
+```
+</CodeGroup>
+
+The entrypoint script:
+
+1. **Waits for PostgreSQL** to be available before starting
+2. **Runs migrations** automatically when starting uWSGI
+3. **Loads initial data** if `DJANGO_LOAD_INITIAL_DATA=on`
+4. **Executes the command** passed to the container
+
+## uWSGI Configuration
+
+The application uses uWSGI with the following configuration at `etc/uwsgi.ini`:
+
+<CodeGroup>
+```ini etc/uwsgi.ini
+[uwsgi]
+http-socket=:$(PORT)
+master=true
+workers=2
+threads=4
+http-keepalive=1
+virtualenv=$(VIRTUAL_ENV)
+wsgi-env-behaviour=holy
+http-auto-chunked=true
+lazy-apps=true
+static-map=/media/=/code/bakerydemo/media/
+wsgi-file=bakerydemo/wsgi.py
+```
+</CodeGroup>
+
+**Configuration Highlights:**
+
+- **Workers**: 2 worker processes for handling requests
+- **Threads**: 4 threads per worker (8 total concurrent requests)
+- **Static Files**: Media files served at `/media/` path
+- **Port**: Configurable via `PORT` environment variable (default: 8000)
+- **Lazy Apps**: Apps loaded after workers fork for better memory efficiency
+
+## Build Arguments
+
+### Wagtail Nightly Build
+
+Test against Wagtail's nightly builds:
+
+```bash
+docker build --build-arg NIGHTLY=1 -t bakerydemo:nightly .
+```
+
+When `NIGHTLY=1`, the build process:
+
+1. Fetches the latest nightly release URL from `https://releases.wagtail.org/nightly/latest.json`
+2. Replaces the Wagtail version in `requirements/base.txt`
+3. Installs the nightly build instead of the stable version
+
+## Docker Best Practices
+
+<AccordionGroup>
+  <Accordion title="Image Size Optimization">
+    The Dockerfile follows best practices for minimal image size:
+    
+    - Uses `python:3.12-slim` base image
+    - Removes build dependencies after installation
+    - Uses multi-stage build pattern
+    - No cache for pip installations
+    - Cleans up apt lists
+    
+    **Typical image size**: ~500-600 MB
+  </Accordion>
+  
+  <Accordion title="Security Considerations">
+    Security features in the Dockerfile:
+    
+    - Non-root user for media directories (1000:2000)
+    - Minimal system packages installed
+    - No debug tools in production image
+    - Environment variables for sensitive data
+    - Volume for media files (not baked into image)
+  </Accordion>
+  
+  <Accordion title="Volume Management">
+    Important volumes to persist:
+    
+    ```yaml
+    volumes:
+      - postgres_data:/var/lib/postgresql/data    # Database
+      - redis_data:/data                           # Redis persistence
+      - media_files:/code/bakerydemo/media        # User uploads
+    ```
+    
+    <Warning>
+      Always backup these volumes before updates or migrations!
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="Health Checks">
+    Add health checks to your docker-compose.prod.yml:
+    
+    ```yaml
+    app:
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 40s
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Docker Commands
+
+### Development
+
+```bash
+# Start services
+docker-compose up
+
+# Start in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f app
+
+# Execute commands in container
+docker-compose exec app python manage.py shell
+
+# Rebuild after code changes
+docker-compose up --build
+
+# Stop services
+docker-compose down
+```
+
+### Production
+
+```bash
+# Build production image
+docker-compose -f docker-compose.prod.yml build
+
+# Start production services
+docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+
+# View production logs
+docker-compose -f docker-compose.prod.yml logs -f
+
+# Run management commands
+docker-compose -f docker-compose.prod.yml exec app python manage.py <command>
+
+# Backup database
+docker-compose -f docker-compose.prod.yml exec db pg_dump -U bakery_user bakerydemo_prod > backup.sql
+
+# Stop and remove containers
+docker-compose -f docker-compose.prod.yml down
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Container won't start">
+    Check the logs for errors:
+    
+    ```bash
+    docker-compose logs app
+    ```
+    
+    Common issues:
+    - Database not ready: The entrypoint script should handle this, but ensure PostgreSQL is running
+    - Port conflicts: Ensure port 8000 is not already in use
+    - Environment variables: Verify all required variables are set
+  </Accordion>
+  
+  <Accordion title="Database connection errors">
+    Verify the database service is running:
+    
+    ```bash
+    docker-compose ps db
+    docker-compose logs db
+    ```
+    
+    Test the connection:
+    ```bash
+    docker-compose exec app psql $DATABASE_URL -c '\q'
+    ```
+  </Accordion>
+  
+  <Accordion title="Static files not loading">
+    Ensure static files were collected during build:
+    
+    ```bash
+    docker-compose exec app ls -la /code/bakerydemo/static/
+    ```
+    
+    Manually collect if needed:
+    ```bash
+    docker-compose exec app python manage.py collectstatic --noinput
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission errors on media uploads">
+    Check media directory permissions:
+    
+    ```bash
+    docker-compose exec app ls -la /code/bakerydemo/media/
+    ```
+    
+    Fix permissions if needed:
+    ```bash
+    docker-compose exec app chown -R 1000:2000 /code/bakerydemo/media
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Settings" icon="gear" href="/deployment/production-settings">
+    Configure production environment variables
+  </Card>
+  <Card title="Heroku Deployment" icon="cloud" href="/deployment/heroku">
+    Alternative deployment on Heroku
+  </Card>
+  <Card title="Getting Started" icon="rocket" href="/getting-started/installation">
+    Development setup guide
+  </Card>
+  <Card title="Deployment Overview" icon="book" href="/deployment/overview">
+    Learn about deployment options
+  </Card>
+</CardGroup>

@@ -1,0 +1,366 @@
+---
+title: Image Galleries
+description: Collection-based image galleries with custom template tags
+---
+
+The Wagtail Bakery Demo implements image gallery functionality using Wagtail's Collections feature, allowing editors to organize and display images in galleries.
+
+## Gallery Page Model
+
+The `GalleryPage` model links to image collections:
+
+```python base/models.py
+from wagtail.models import Collection, Page
+
+class GalleryPage(Page):
+    """
+    This is a page to list locations from the selected Collection. We use a Q
+    object to list any Collection created (/admin/collections/) even if they
+    contain no items. In this demo we use it for a GalleryPage,
+    and is intended to show the extensibility of this aspect of Wagtail
+    """
+    introduction = models.TextField(
+        help_text="Text to describe the page",
+        blank=True
+    )
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(),
+        verbose_name="Page body",
+        blank=True,
+        use_json_field=True
+    )
+    collection = models.ForeignKey(
+        Collection,
+        limit_choices_to=~models.Q(name__in=["Root"]),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        help_text="Select the image collection for this gallery.",
+    )
+
+    content_panels = Page.content_panels + [
+        FieldPanel("introduction"),
+        FieldPanel("body"),
+        FieldPanel("image"),
+        FieldPanel("collection"),
+    ]
+
+    # Defining what content type can sit under the parent
+    subpage_types = []
+
+    api_fields = [
+        APIField("introduction"),
+        APIField("image"),
+        APIField("body"),
+        APIField("collection"),
+    ]
+```
+
+## Template Implementation
+
+### Gallery Page Template
+
+The gallery page template uses a custom template tag to render images:
+
+```django base/gallery_page.html
+{% extends "base.html" %}
+{% load wagtailimages_tags gallery_tags %}
+
+{% block content %}
+    {% include "base/include/header-hero.html" %}
+
+    <div class="container gallery__container">
+        <div class="row">
+            <div class="col-md-8">
+                {% if page.introduction %}
+                    <p class="gallery__introduction">{{ page.introduction }}</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="gallery__grid">
+            {% gallery page.collection %}
+        </div>
+    </div>
+{% endblock content %}
+```
+
+## Custom Template Tag
+
+The `gallery` template tag retrieves and displays images from a collection:
+
+```python base/templatetags/gallery_tags.py
+from django import template
+from wagtail.images.models import Image
+
+register = template.Library()
+
+@register.inclusion_tag("tags/gallery.html", takes_context=True)
+def gallery(context, gallery):
+    """Retrieves a single gallery item and returns a gallery of images"""
+    images = Image.objects.filter(collection=gallery)
+
+    return {
+        "images": images,
+        "request": context["request"],
+    }
+```
+
+<Note>
+  The gallery template tag uses an inclusion tag, which renders the `tags/gallery.html` template with the filtered images.
+</Note>
+
+## Image Collections
+
+<Steps>
+  <Step title="Create a Collection">
+    Collections are created in the Wagtail admin at `/admin/collections/`:
+    
+    - Navigate to Settings → Collections
+    - Click "Add a collection"
+    - Give it a descriptive name
+    - Set permissions if needed
+  </Step>
+
+  <Step title="Add Images to Collection">
+    When uploading images in the admin:
+    
+    - Go to Images section
+    - Upload new images or edit existing ones
+    - Select the appropriate collection from the dropdown
+    - Images can be moved between collections at any time
+  </Step>
+
+  <Step title="Link Collection to Gallery Page">
+    In the GalleryPage editor:
+    
+    ```python
+    collection = models.ForeignKey(
+        Collection,
+        limit_choices_to=~models.Q(name__in=["Root"]),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    ```
+    
+    The `limit_choices_to` parameter excludes the "Root" collection from selection.
+  </Step>
+</Steps>
+
+## Image API Configuration
+
+Images are exposed through the API with collection metadata:
+
+```python base/models.py
+from wagtail.images.models import Image
+from wagtail.api import APIField
+
+# Allow filtering by collection
+Image.api_fields = [APIField("collection")]
+```
+
+<Accordion title="Why Add Collection to API Fields?">
+  Adding the collection field to the Image API allows API consumers to:
+  
+  - Filter images by collection
+  - Display collection information alongside images
+  - Build gallery interfaces in headless/decoupled architectures
+  - Organize images programmatically
+</Accordion>
+
+## Image Features
+
+### AVIF Quality Settings
+
+The demo configures AVIF image quality for modern browsers:
+
+```python settings/base.py
+WAGTAILIMAGES_AVIF_QUALITY = 60
+```
+
+### Image Model Integration
+
+Images are used throughout the demo with various features:
+
+```python
+image = models.ForeignKey(
+    "wagtailimages.Image",
+    null=True,
+    blank=True,
+    on_delete=models.SET_NULL,
+    related_name="+",
+    help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+)
+```
+
+<CardGroup cols={2}>
+  <Card title="Responsive Images" icon="mobile">
+    Wagtail automatically generates multiple image sizes for responsive display.
+  </Card>
+  <Card title="Image Renditions" icon="image">
+    Create custom image sizes using filters like `fill-800x600` or `width-1200`.
+  </Card>
+  <Card title="Focal Points" icon="crosshairs">
+    Editors can set focal points to ensure important parts of images are preserved when cropped.
+  </Card>
+  <Card title="Multiple Formats" icon="file-image">
+    Wagtail serves images in modern formats (WebP, AVIF) with automatic fallbacks.
+  </Card>
+</CardGroup>
+
+## StreamField Image Blocks
+
+Images can also be added to pages through StreamField blocks:
+
+```python base/blocks.py
+from wagtail.images.blocks import ImageChooserBlock
+from wagtail.blocks import StructBlock, CharBlock
+
+class CaptionedImageBlock(StructBlock):
+    """
+    Custom `StructBlock` for utilizing images with associated caption and
+    attribution data
+    """
+    image = ImageChooserBlock(required=True)
+    caption = CharBlock(required=False)
+    attribution = CharBlock(required=False)
+
+    class Meta:
+        icon = "image"
+        template = "blocks/captioned_image_block.html"
+        description = "An image with optional caption and attribution"
+```
+
+### Using in StreamField
+
+```python base/blocks.py
+class BaseStreamBlock(StreamBlock):
+    """Define the custom blocks that StreamField will utilize"""
+    heading_block = HeadingBlock()
+    paragraph_block = RichTextBlock()
+    image_block = CaptionedImageBlock()
+    # ... other blocks
+```
+
+## Collection Permissions
+
+Collections support granular permissions:
+
+- **Add images**: Control who can upload to specific collections
+- **Change images**: Control who can edit images in collections
+- **Choose images**: Control which collections are visible in image choosers
+
+<Note>
+  Collection permissions are particularly useful for:
+  - Multi-tenant sites where different departments manage their own images
+  - Client portals where clients should only access their own images
+  - Workflow separation between draft and published assets
+</Note>
+
+## Gallery Display Patterns
+
+### Grid Layout
+
+The demo uses a grid layout for gallery display:
+
+```html
+<div class="gallery__grid">
+    {% gallery page.collection %}
+</div>
+```
+
+### Image Renditions
+
+Generate thumbnails and optimized versions:
+
+```django
+{% load wagtailimages_tags %}
+
+{% for image in images %}
+    {% image image fill-400x400 as thumb %}
+    <div class="gallery__item">
+        <img src="{{ thumb.url }}" alt="{{ image.title }}">
+    </div>
+{% endfor %}
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Organize with Collections">
+    Use collections to group related images by:
+    - Project or campaign
+    - Department or team
+    - Time period or season
+    - Content type or purpose
+  </Step>
+
+  <Step title="Set Image Sizes">
+    Provide guidance to editors about optimal image dimensions:
+    
+    ```python
+    help_text="Landscape mode only; horizontal width between 1000px and 3000px."
+    ```
+  </Step>
+
+  <Step title="Use Focal Points">
+    Encourage editors to set focal points for images that will be cropped in different contexts.
+  </Step>
+
+  <Step title="Add Metadata">
+    Ensure images have:
+    - Descriptive titles
+    - Alt text for accessibility
+    - Tags for searchability
+    - Copyright/attribution information
+  </Step>
+</Steps>
+
+## Advanced Features
+
+### Custom Image Models
+
+Extend the base Image model for additional metadata:
+
+```python
+from wagtail.images.models import Image, AbstractImage, AbstractRendition
+
+class CustomImage(AbstractImage):
+    photographer = models.CharField(max_length=255, blank=True)
+    license = models.CharField(max_length=255, blank=True)
+    
+    admin_form_fields = Image.admin_form_fields + (
+        'photographer',
+        'license',
+    )
+
+class CustomRendition(AbstractRendition):
+    image = models.ForeignKey(
+        CustomImage,
+        related_name='renditions',
+        on_delete=models.CASCADE
+    )
+    
+    class Meta:
+        unique_together = (
+            ('image', 'filter_spec', 'focal_point_key'),
+        )
+```
+
+<Accordion title="When to Use Custom Image Models">
+  Consider a custom image model when you need to:
+  
+  - Track copyright or licensing information
+  - Store photographer credits
+  - Add custom metadata fields
+  - Implement custom image processing workflows
+  - Integrate with external asset management systems
+</Accordion>

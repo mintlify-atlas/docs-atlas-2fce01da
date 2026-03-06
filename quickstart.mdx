@@ -1,80 +1,226 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get the Wagtail Bakery Demo up and running in minutes
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+Get started with the Wagtail Bakery Demo in just a few minutes. This guide will help you quickly set up a running instance and explore Wagtail's features.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+The Wagtail Bakery Demo is designed as a learning tool and reference implementation. It's not intended to be used as a starting point for your own site—instead, use `wagtail start` for new projects.
 </Note>
+
+## Quick Start with Gitpod
+
+The fastest way to try the Wagtail Bakery Demo is through Gitpod, which provides a complete development environment in your browser.
+
+<Steps>
+  <Step title="Launch Gitpod">
+    Click the button below to open the project in Gitpod (requires a GitHub account):
+
+    [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/wagtail/bakerydemo/)
+
+    Gitpod will automatically:
+    - Set up the Python environment
+    - Install all dependencies
+    - Create and migrate the database
+    - Load demo content
+    - Start the development server
+  </Step>
+
+  <Step title="Access the Demo Site">
+    Once Gitpod has fully started, a preview of the bakery website will appear in the "Simple Browser" panel. Click the arrow button to the right of the URL bar to open the website in a new tab.
+
+    The site will be running at a URL like: `https://8080-yourworkspace.gitpod.io`
+  </Step>
+
+  <Step title="Login to the Admin">
+    Navigate to `/admin/` on your Gitpod URL and log in with:
+
+    <CodeGroup>
+    ```bash Default Credentials
+    Username: admin
+    Password: changeme
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Quick Start with Docker
+
+If you prefer to run locally, Docker is the fastest method.
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git --config core.autocrlf=input
+    cd bakerydemo
+    ```
+
+    <Note>
+    The `--config core.autocrlf=input` flag ensures proper line endings across different operating systems.
+    </Note>
+  </Step>
+
+  <Step title="Build and Start Services">
+    ```bash
+    docker compose up --build -d
+    ```
+
+    This command will:
+    - Build the Docker image
+    - Start PostgreSQL database
+    - Start Redis cache
+    - Start the Django application
+  </Step>
+
+  <Step title="Set Up the Database">
+    Wait 10 seconds for the database to be ready, then run:
+
+    ```bash
+    docker compose run app /venv/bin/python manage.py migrate
+    docker compose run app /venv/bin/python manage.py load_initial_data
+    ```
+
+    <Warning>
+    If you get a database error, wait another 10 seconds and try again. The PostgreSQL container needs time to initialize.
+    </Warning>
+
+    The `load_initial_data` command will:
+    - Copy media files (images) to the configured storage
+    - Load all demo content from fixtures
+    - Create sample pages, blog posts, breads, and locations
+    - Update the search index
+  </Step>
+
+  <Step title="Start the Server">
+    ```bash
+    docker compose up
+    ```
+
+    The demo site will be available at:
+    - **Frontend**: [http://localhost:8000/](http://localhost:8000/)
+    - **Admin**: [http://localhost:8000/admin/](http://localhost:8000/admin/)
+
+    Login with: `admin / changeme`
+  </Step>
+</Steps>
+
+### Docker Commands Reference
+
+<CodeGroup>
+```bash View Logs
+# Tail logs from all containers
+docker compose logs -f
+
+# View logs from specific service
+docker compose logs -f app
+```
+
+```bash Stop Services
+# Stop all containers
+docker compose down
+
+# Stop and remove volumes
+docker compose down -v
+```
+
+```bash Rebuild
+# Rebuild after code changes
+docker compose up --build
+```
+</CodeGroup>
+
+## Exploring the Demo
+
+Once you have the demo running, here's what to explore:
+
+<CardGroup cols={2}>
+  <Card title="Admin Interface" icon="user-shield">
+    Navigate to `/admin/` to explore Wagtail's editorial interface. Try creating, editing, and publishing pages.
+  </Card>
+
+  <Card title="Content Types" icon="layer-group">
+    Explore the different content types:
+    - Blog posts with rich text and images
+    - Bread pages with ingredients and recipes
+    - Location pages with operating hours
+    - Gallery pages
+  </Card>
+
+  <Card title="Wagtail Features" icon="stars">
+    Test out features like:
+    - StreamField for flexible page layouts
+    - Image management and focal points
+    - Page tree organization
+    - Workflow and moderation
+  </Card>
+
+  <Card title="API Endpoints" icon="code">
+    The demo includes Wagtail's API:
+    - `/api/v2/pages/` - Pages API
+    - `/api/v2/images/` - Images API
+    - `/api/v2/documents/` - Documents API
+  </Card>
+</CardGroup>
+
+## Demo Users
+
+The demo includes several users with different roles for testing permissions:
+
+| Username | Password | Role | Superuser |
+|----------|----------|------|----------|
+| `admin` | `changeme` | Full access | Yes |
+| `editor` | `changeme` | Can edit content | No |
+| `moderator` | `changeme` | Can approve content | No |
+| `german` | `changeme` | German locale | Yes |
+| `arabic` | `changeme` | Arabic locale | Yes |
+| `inactive` | `changeme` | Inactive user | Yes |
+
+<Note>
+Try logging in with different users to see how Wagtail's permission system works.
+</Note>
+
+## What's Included
+
+The Bakery Demo showcases:
+
+- **Multiple Apps**: Organized project structure with separate apps for blog, breads, locations, and recipes
+- **Custom Models**: Examples of content types with custom fields and behaviors
+- **StreamField**: Flexible content blocks for rich page layouts
+- **Snippets**: Reusable content like bread categories, countries, and ingredients
+- **Relationships**: Many-to-many relationships via the ingredients feature
+- **Wagtail Hooks**: Customizations to the admin interface
+- **Search**: Database-powered search implementation
+- **Forms**: Contact forms with form builder
+- **API**: REST API endpoints for headless CMS usage
+
+## Next Steps
+
+<Steps>
+  <Step title="Explore the Code">
+    The demo is designed for developers to read and learn from. Check out:
+    - `bakerydemo/base/models.py` - Base page models and mixins
+    - `bakerydemo/blog/models.py` - Blog implementation
+    - `bakerydemo/breads/models.py` - Custom content with relationships
+    - `bakerydemo/base/wagtail_hooks.py` - Admin customizations
+  </Step>
+
+  <Step title="Read the Installation Guide">
+    For detailed setup instructions including Vagrant and venv methods, see the [Installation Guide](/installation).
+  </Step>
+
+  <Step title="Create Your Own Site">
+    Ready to build your own Wagtail site? Use the official starter:
+
+    ```bash
+    pip install wagtail
+    wagtail start mysite
+    ```
+
+    See the [Wagtail Getting Started docs](https://docs.wagtail.org/en/stable/getting_started/index.html) for more information.
+  </Step>
+</Steps>
+
+<Warning>
+The Docker configuration (`docker-compose.yml`) is for local development only and is not suitable for production use.
+</Warning>

@@ -1,0 +1,417 @@
+---
+title: 'Breads Models'
+description: 'Bread page models including BreadPage, BreadsIndexPage, and related snippet models'
+---
+
+## Overview
+
+The breads models provide functionality for managing bread products in the bakery demo. This includes bread pages with ingredients, types, countries of origin, and a paginated index page.
+
+## BreadPage
+
+Detail view for a specific bread product.
+
+<Accordion title="Full Class Definition">
+```python
+class BreadPage(Page):
+    """
+    Detail view for a specific bread
+    """
+
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+    body = StreamField(
+        BaseStreamBlock(), verbose_name="Page body", blank=True, use_json_field=True
+    )
+    origin = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    bread_type = models.ForeignKey(
+        "breads.BreadType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    ingredients = ParentalManyToManyField("BreadIngredient", blank=True)
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Text to describe the bread page. Optional field for providing an overview.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Main image for the bread. Landscape mode recommended with width between 1000px and 3000px.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Rich content body using `BaseStreamBlock`. Supports various content blocks including text, images, and embeds.
+</ParamField>
+
+<ParamField path="origin" type="ForeignKey">
+  Country of origin for the bread. References the `Country` snippet model.
+</ParamField>
+
+<ParamField path="bread_type" type="ForeignKey">
+  Type classification for the bread (e.g., sourdough, baguette). References `BreadType` snippet. Uses `related_name="+"` to avoid reverse relation conflicts.
+</ParamField>
+
+<ParamField path="ingredients" type="ParentalManyToManyField">
+  Many-to-many relationship with `BreadIngredient` snippets. Allows multiple ingredients to be associated with a bread.
+</ParamField>
+
+### Content Panels
+
+```python
+content_panels = Page.content_panels + [
+    FieldPanel("introduction"),
+    FieldPanel("image"),
+    FieldPanel("body"),
+    FieldPanel("origin"),
+    FieldPanel("bread_type"),
+    MultiFieldPanel(
+        [
+            FieldPanel(
+                "ingredients",
+                widget=forms.CheckboxSelectMultiple,
+            ),
+        ],
+        heading="Additional Metadata",
+        classname="collapsed",
+    ),
+]
+```
+
+### Properties
+
+<Accordion title="ordered_ingredients">
+```python
+@property
+def ordered_ingredients(self):
+    """Return ingredients ordered by sort_order, then name."""
+    return self.ingredients.order_by("sort_order", "name")
+```
+
+Returns ingredients sorted by their `sort_order` field, then alphabetically by name.
+</Accordion>
+
+### API Fields
+
+```python
+api_fields = [
+    APIField("introduction"),
+    APIField("image"),
+    APIField("body"),
+    APIField("origin"),
+    APIField("bread_type"),
+    APIField("ingredients"),
+]
+```
+
+### Page Hierarchy
+
+- **Parent page types**: `BreadsIndexPage`
+
+---
+
+## BreadsIndexPage
+
+Index page for breads with pagination support.
+
+<Accordion title="Full Class Definition">
+```python
+class BreadsIndexPage(Page):
+    """
+    Index page for breads.
+
+    This is more complex than other index pages on the bakery demo site as we've
+    included pagination. We've separated the different aspects of the index page
+    to be discrete functions to make it easier to follow
+    """
+
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Landscape mode only; horizontal width between 1000px and 3000px.",
+    )
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Text to describe the breads index page.
+</ParamField>
+
+<ParamField path="image" type="ForeignKey">
+  Header image for the index page. Landscape orientation recommended.
+</ParamField>
+
+### Methods
+
+<Accordion title="get_breads()">
+```python
+def get_breads(self):
+    return (
+        BreadPage.objects.live().descendant_of(self).order_by("-first_published_at")
+    )
+```
+
+Returns a queryset of live BreadPage objects that are descendants of this index page, ordered by publication date (newest first).
+</Accordion>
+
+<Accordion title="children()">
+```python
+def children(self):
+    return self.get_children().specific().live()
+```
+
+Returns all live child pages with their specific types.
+</Accordion>
+
+<Accordion title="paginate(request, *args)">
+```python
+def paginate(self, request, *args):
+    page = request.GET.get("page")
+    paginator = Paginator(self.get_breads(), 12)
+    try:
+        pages = paginator.page(page)
+    except PageNotAnInteger:
+        pages = paginator.page(1)
+    except EmptyPage:
+        pages = paginator.page(paginator.num_pages)
+    return pages
+```
+
+Paginates bread pages with 12 items per page. Handles invalid page numbers gracefully.
+</Accordion>
+
+<Accordion title="get_context(request)">
+```python
+def get_context(self, request):
+    context = super(BreadsIndexPage, self).get_context(request)
+    
+    # BreadPage objects (get_breads) are passed through pagination
+    breads = self.paginate(request, self.get_breads())
+    
+    context["breads"] = breads
+    
+    return context
+```
+
+Adds paginated breads to the template context.
+</Accordion>
+
+### Page Hierarchy
+
+- **Subpage types**: `BreadPage`
+
+---
+
+## Country
+
+Snippet model for storing countries of origin.
+
+<Accordion title="Full Class Definition">
+```python
+class Country(models.Model):
+    """
+    A Django model to store set of countries of origin.
+    It is made accessible in the Wagtail admin interface through the CountrySnippetViewSet
+    class in wagtail_hooks.py. This allows us to customize the admin interface for this snippet.
+    In the BreadPage model you'll see we use a ForeignKey to create the relationship between
+    Country and BreadPage. This allows a single relationship (e.g only one
+    Country can be added) that is one-way (e.g. Country will have no way to
+    access related BreadPage objects).
+    """
+
+    title = models.CharField(max_length=100)
+    sort_order = models.IntegerField(null=True, blank=True, db_index=True)
+
+    api_fields = [
+        APIField("title"),
+    ]
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        verbose_name = "country of origin"
+        verbose_name_plural = "countries of origin"
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="title" type="CharField">
+  Name of the country. Maximum length of 100 characters.
+</ParamField>
+
+<ParamField path="sort_order" type="IntegerField">
+  Optional field for custom ordering. Database indexed for performance.
+</ParamField>
+
+---
+
+## BreadIngredient
+
+Snippet model for bread ingredients with draft state and revision support.
+
+<Accordion title="Full Class Definition">
+```python
+class BreadIngredient(Orderable, DraftStateMixin, RevisionMixin, models.Model):
+    """
+    A Django model to store a single ingredient.
+    It is made accessible in the Wagtail admin interface through the BreadIngredientSnippetViewSet
+    class in wagtail_hooks.py. This allows us to customize the admin interface for this snippet.
+    We use a piece of functionality available to Wagtail called the ParentalManyToManyField on the BreadPage
+    model to display this. The Wagtail Docs give a slightly more detailed example
+    https://docs.wagtail.org/en/stable/getting_started/tutorial.html#categories
+    """
+
+    name = models.CharField(max_length=255)
+
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="bread_ingredient",
+        for_concrete_model=False,
+    )
+
+    panels = [
+        FieldPanel("name"),
+    ]
+
+    api_fields = [
+        APIField("name"),
+    ]
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "bread ingredient"
+        verbose_name_plural = "bread ingredients"
+        ordering = ["sort_order", "name"]
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="name" type="CharField">
+  Name of the ingredient. Maximum length of 255 characters.
+</ParamField>
+
+<ParamField path="revisions" type="GenericRelation">
+  Revision history for the ingredient. Enables draft/publish workflow.
+</ParamField>
+
+### Features
+
+- **Orderable**: Inherits ordering functionality
+- **DraftStateMixin**: Supports draft/live states
+- **RevisionMixin**: Maintains revision history
+- **Default ordering**: By `sort_order`, then `name`
+
+---
+
+## BreadType
+
+Snippet model for bread type classification.
+
+<Accordion title="Full Class Definition">
+```python
+class BreadType(RevisionMixin, models.Model):
+    """
+    A Django model to define the bread type
+    It is made accessible in the Wagtail admin interface through the BreadTypeSnippetViewSet
+    class in wagtail_hooks.py. This allows us to customize the admin interface for this snippet.
+    In the BreadPage model you'll see we use a ForeignKey
+    to create the relationship between BreadType and BreadPage. This allows a
+    single relationship (e.g only one BreadType can be added) that is one-way
+    (e.g. BreadType will have no way to access related BreadPage objects)
+    """
+
+    title = models.CharField(max_length=255)
+
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="bread_type",
+        for_concrete_model=False,
+    )
+
+    panels = [
+        FieldPanel("title"),
+    ]
+
+    api_fields = [
+        APIField("title"),
+    ]
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        verbose_name = "bread type"
+        verbose_name_plural = "bread types"
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="title" type="CharField">
+  Name of the bread type (e.g., "Sourdough", "Baguette"). Maximum length of 255 characters.
+</ParamField>
+
+<ParamField path="revisions" type="GenericRelation">
+  Revision history for the bread type.
+</ParamField>
+
+---
+
+## Usage Example
+
+```python
+# Get all breads with their ingredients
+from bakerydemo.breads.models import BreadPage, BreadIngredient, BreadType
+
+breads = BreadPage.objects.live()
+for bread in breads:
+    print(f"{bread.title} ({bread.bread_type})")
+    print(f"Origin: {bread.origin}")
+    print("Ingredients:")
+    for ingredient in bread.ordered_ingredients:
+        print(f"  - {ingredient.name}")
+
+# Create a new bread ingredient
+ingredient = BreadIngredient(
+    name="Whole Wheat Flour",
+    sort_order=1
+)
+ingredient.save()
+
+# Get all bread types
+types = BreadType.objects.all()
+for bread_type in types:
+    print(bread_type.title)
+```

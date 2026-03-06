@@ -1,0 +1,376 @@
+---
+title: Snippets
+description: Reusable content models with custom admin interfaces
+---
+
+Snippets in Wagtail are reusable pieces of content that can be managed in the admin and referenced from pages. The Bakery Demo showcases several snippet implementations with custom admin interfaces.
+
+## Snippet Types
+
+The demo includes four main snippet types:
+
+<CardGroup cols={2}>
+  <Card title="Country" icon="globe">
+    Countries of origin for bread products
+  </Card>
+  <Card title="BreadType" icon="bread-slice">
+    Categories for different types of bread
+  </Card>
+  <Card title="BreadIngredient" icon="wheat">
+    Individual ingredients used in bread recipes
+  </Card>
+  <Card title="Person" icon="user">
+    People who author blog posts and other content
+  </Card>
+</CardGroup>
+
+## Country Snippet
+
+### Model Definition
+
+```python breads/models.py
+class Country(models.Model):
+    """
+    A Django model to store set of countries of origin.
+    It is made accessible in the Wagtail admin interface through the CountrySnippetViewSet
+    class in wagtail_hooks.py.
+    """
+    title = models.CharField(max_length=100)
+    sort_order = models.IntegerField(null=True, blank=True, db_index=True)
+
+    api_fields = [
+        APIField("title"),
+    ]
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        verbose_name = "country of origin"
+        verbose_name_plural = "countries of origin"
+```
+
+### Admin Registration
+
+```python breads/wagtail_hooks.py
+from wagtail.admin.viewsets.model import ModelViewSet
+
+class CountryModelViewSet(ModelViewSet):
+    model = Country
+    ordering = "title"
+    search_fields = ("title",)
+    icon = "globe"
+    inspect_view_enabled = True
+    sort_order_field = "sort_order"
+
+    panels = [
+        FieldPanel("title"),
+    ]
+```
+
+## BreadType Snippet
+
+### Model Definition
+
+```python breads/models.py
+from wagtail.models import RevisionMixin
+
+class BreadType(RevisionMixin, models.Model):
+    """
+    A Django model to define the bread type.
+    It uses RevisionMixin to support draft/live states and revision history.
+    """
+    title = models.CharField(max_length=255)
+
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="bread_type",
+        for_concrete_model=False,
+    )
+
+    panels = [
+        FieldPanel("title"),
+    ]
+
+    api_fields = [
+        APIField("title"),
+    ]
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        verbose_name = "bread type"
+        verbose_name_plural = "bread types"
+```
+
+### ViewSet with Filtering
+
+```python breads/wagtail_hooks.py
+from wagtail.admin.filters import WagtailFilterSet
+from wagtail.snippets.views.snippets import SnippetViewSet
+
+class BreadTypeFilterSet(RevisionFilterSetMixin, WagtailFilterSet):
+    class Meta:
+        model = BreadType
+        fields = []
+
+class BreadTypeSnippetViewSet(SnippetViewSet):
+    model = BreadType
+    ordering = ("title",)
+    search_fields = ("title",)
+    filterset_class = BreadTypeFilterSet
+```
+
+## BreadIngredient Snippet
+
+### Model with Draft States
+
+```python breads/models.py
+from wagtail.models import Orderable, DraftStateMixin, RevisionMixin
+
+class BreadIngredient(Orderable, DraftStateMixin, RevisionMixin, models.Model):
+    """
+    A Django model to store a single ingredient.
+    Uses DraftStateMixin for draft/live workflow and Orderable for manual sorting.
+    """
+    name = models.CharField(max_length=255)
+
+    revisions = GenericRelation(
+        "wagtailcore.Revision",
+        content_type_field="base_content_type",
+        object_id_field="object_id",
+        related_query_name="bread_ingredient",
+        for_concrete_model=False,
+    )
+
+    panels = [
+        FieldPanel("name"),
+    ]
+
+    api_fields = [
+        APIField("name"),
+    ]
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "bread ingredient"
+        verbose_name_plural = "bread ingredients"
+        ordering = ["sort_order", "name"]
+```
+
+### ViewSet with Inspection
+
+```python breads/wagtail_hooks.py
+class BreadIngredientFilterSet(RevisionFilterSetMixin, WagtailFilterSet):
+    class Meta:
+        model = BreadIngredient
+        fields = {
+            "live": ["exact"],
+        }
+
+class BreadIngredientSnippetViewSet(SnippetViewSet):
+    model = BreadIngredient
+    ordering = "name"
+    search_fields = ("name",)
+    filterset_class = BreadIngredientFilterSet
+    inspect_view_enabled = True
+```
+
+## Person Snippet
+
+### Advanced Model with Workflow
+
+```python base/models.py
+from wagtail.models import (
+    WorkflowMixin,
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+)
+from wagtail.search import index
+
+class Person(
+    WorkflowMixin,
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    index.Indexed,
+    ClusterableModel,
+):
+    """
+    A Django model to store Person objects.
+    Uses ClusterableModel for relationships and PreviewableMixin for preview functionality.
+    """
+    first_name = models.CharField("First name", max_length=254)
+    last_name = models.CharField("Last name", max_length=254)
+    job_title = models.CharField("Job title", max_length=254)
+
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    panels = [
+        MultiFieldPanel(
+            [
+                FieldRowPanel(
+                    [
+                        FieldPanel("first_name"),
+                        FieldPanel("last_name"),
+                    ]
+                )
+            ],
+            "Name",
+        ),
+        FieldPanel("job_title"),
+        FieldPanel("image"),
+        PublishingPanel(),
+    ]
+
+    search_fields = [
+        index.SearchField("first_name"),
+        index.SearchField("last_name"),
+        index.FilterField("job_title"),
+        index.AutocompleteField("first_name"),
+        index.AutocompleteField("last_name"),
+    ]
+
+    def __str__(self):
+        return "{} {}".format(self.first_name, self.last_name)
+
+    class Meta:
+        verbose_name = "person"
+        verbose_name_plural = "people"
+```
+
+### Custom ViewSet
+
+```python base/wagtail_hooks.py
+class PersonFilterSet(RevisionFilterSetMixin, WagtailFilterSet):
+    class Meta:
+        model = Person
+        fields = {
+            "job_title": ["icontains"],
+            "live": ["exact"],
+            "locked": ["exact"],
+        }
+
+class PersonViewSet(SnippetViewSet):
+    model = Person
+    menu_label = "People"
+    icon = "group"
+    list_display = ("first_name", "last_name", "job_title", "thumb_image")
+    list_export = ("first_name", "last_name", "job_title")
+    filterset_class = PersonFilterSet
+```
+
+## Snippet Groups
+
+<Steps>
+  <Step title="Define Snippet Groups">
+    Organize related snippets together using `SnippetViewSetGroup`:
+
+    ```python breads/wagtail_hooks.py
+    from wagtail.snippets.views.snippets import SnippetViewSetGroup
+
+    class BreadMenuGroup(SnippetViewSetGroup):
+        menu_label = "Breads"
+        menu_icon = "suitcase"
+        menu_order = 200
+        items = (
+            BreadPageListingViewSet("bread_pages"),
+            BreadIngredientSnippetViewSet,
+            BreadTypeSnippetViewSet,
+            CountryModelViewSet,
+        )
+    ```
+  </Step>
+
+  <Step title="Register the Group">
+    Register only the group, not individual snippets:
+
+    ```python breads/wagtail_hooks.py
+    from wagtail.snippets.models import register_snippet
+
+    register_snippet(BreadMenuGroup)
+    ```
+  </Step>
+</Steps>
+
+## Usage in Pages
+
+### ForeignKey Relationships
+
+```python breads/models.py
+class BreadPage(Page):
+    origin = models.ForeignKey(
+        Country,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    
+    bread_type = models.ForeignKey(
+        "breads.BreadType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    
+    content_panels = Page.content_panels + [
+        FieldPanel("origin"),
+        FieldPanel("bread_type"),
+    ]
+```
+
+### Many-to-Many Relationships
+
+```python breads/models.py
+from modelcluster.fields import ParentalManyToManyField
+
+class BreadPage(Page):
+    ingredients = ParentalManyToManyField("BreadIngredient", blank=True)
+    
+    content_panels = Page.content_panels + [
+        MultiFieldPanel(
+            [
+                FieldPanel(
+                    "ingredients",
+                    widget=forms.CheckboxSelectMultiple,
+                ),
+            ],
+            heading="Additional Metadata",
+            classname="collapsed",
+        ),
+    ]
+```
+
+<Accordion title="Why Use ParentalManyToManyField?">
+  `ParentalManyToManyField` from django-modelcluster allows relationships to be stored locally to the parent model until it's explicitly saved. This enables:
+  
+  - Preview functionality to work correctly
+  - Revision tracking of relationships
+  - Proper handling in Wagtail's admin interface
+</Accordion>
+
+## Best Practices
+
+<Note>
+  **Use appropriate mixins:** Choose mixins based on your needs:
+  - `DraftStateMixin` for draft/live workflow
+  - `RevisionMixin` for revision history
+  - `PreviewableMixin` for preview functionality
+  - `WorkflowMixin` for approval workflows
+  - `LockableMixin` for content locking
+</Note>

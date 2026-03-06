@@ -1,0 +1,415 @@
+---
+title: 'Development Setup'
+description: 'Set up your local development environment for Wagtail Bakery Demo'
+icon: 'code'
+---
+
+This guide will walk you through setting up a local development environment for the Wagtail Bakery Demo project.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- Python 3.10 or higher
+- pip (Python package installer)
+- Git
+- [venv](https://docs.python.org/3/library/venv.html) (Python virtual environment)
+
+## Installation Methods
+
+The Bakery Demo supports multiple installation methods. Choose the one that best fits your workflow:
+
+<CardGroup cols={2}>
+  <Card title="venv Setup" icon="python" href="#setup-with-venv">
+    Traditional Python virtual environment setup
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="#setup-with-docker">
+    Containerized development environment
+  </Card>
+  <Card title="Gitpod Setup" icon="cloud" href="#setup-with-gitpod">
+    Cloud-based development environment
+  </Card>
+  <Card title="Vagrant Setup" icon="box" href="#setup-with-vagrant">
+    VM-based development environment
+  </Card>
+</CardGroup>
+
+## Setup with venv
+
+<Note>
+This is the recommended approach for developers familiar with Python and Django development.
+</Note>
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the Wagtail Bakery Demo repository to your local machine:
+
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git
+    cd bakerydemo
+    ```
+  </Step>
+
+  <Step title="Create Virtual Environment">
+    Create and activate a Python virtual environment:
+
+    **On macOS/Linux:**
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
+
+    **On Windows (cmd.exe):**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate.bat
+    ```
+
+    **On Windows (PowerShell):**
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\Activate.ps1
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install the required Python packages:
+
+    ```bash
+    pip install -r requirements/development.txt
+    ```
+
+    This installs all necessary packages including:
+    - Django 6.0+
+    - Wagtail 7.2+
+    - Development tools (ruff, djhtml, curlylint)
+    - Extensions (django-debug-toolbar, django-extensions)
+  </Step>
+
+  <Step title="Configure Environment Files">
+    Create local configuration files from the provided examples:
+
+    ```bash
+    cp bakerydemo/settings/local.py.example bakerydemo/settings/local.py
+    cp .env.example .env
+    ```
+
+    <Accordion title="Understanding Configuration Files">
+      **local.py** - Local Django settings overrides
+      
+      The `bakerydemo/settings/local.py` file is loaded by `dev.py` and allows you to override any settings without committing them to version control. By default, it's empty:
+
+      ```python
+      # Override settings here
+      ```
+
+      You can add custom settings like database configurations, API keys, or debug settings here.
+
+      **.env** - Environment variables
+
+      The `.env` file contains Content Security Policy (CSP) directives for testing Wagtail's CSP compatibility. These are commented out by default:
+
+      ```bash
+      # CSP_DEFAULT_SRC="'self'"
+      # CSP_SCRIPT_SRC="'self', 'report-sample'"
+      # CSP_STYLE_SRC="'self', 'report-sample'"
+      # CSP_IMG_SRC="'self', blob:, i.ytimg.com, www.gravatar.com"
+      # CSP_CONNECT_SRC="'self', releases.wagtail.org"
+      # CSP_FRAME_SRC="'self', www.youtube.com"
+      ```
+
+      <Note>
+      Wagtail is not fully compatible with strict CSP policies yet. Only uncomment these for testing purposes.
+      </Note>
+    </Accordion>
+  </Step>
+
+  <Step title="Initialize Database">
+    Run migrations to create the database schema:
+
+    ```bash
+    ./manage.py migrate
+    ```
+
+    This creates a SQLite database file named `bakerydemodb` in your project root.
+  </Step>
+
+  <Step title="Load Initial Data">
+    Load the demo data including pages, images, and snippets:
+
+    ```bash
+    ./manage.py load_initial_data
+    ```
+
+    This command:
+    - Copies media files to the configured storage
+    - Removes auto-generated default Site and Page instances
+    - Loads fixture data from `bakerydemo/base/fixtures/bakerydemo.json`
+    - Updates the search index
+    - Rebuilds the references index
+  </Step>
+
+  <Step title="Start the Development Server">
+    Launch the Django development server:
+
+    ```bash
+    ./manage.py runserver
+    ```
+
+    The site will be available at:
+    - **Frontend**: http://localhost:8000/
+    - **Admin**: http://localhost:8000/admin/
+
+    Login credentials: `admin` / `changeme`
+  </Step>
+</Steps>
+
+## Setup with Docker
+
+<Note>
+This docker-compose.yml is configured for local testing only and is not intended for production use.
+</Note>
+
+<Steps>
+  <Step title="Install Docker">
+    Ensure you have Docker and Docker Compose installed:
+    - [Docker Engine](https://docs.docker.com/engine/installation/)
+    - [Docker Compose](https://docs.docker.com/compose/install/)
+  </Step>
+
+  <Step title="Clone and Build">
+    Clone the repository and build the containers:
+
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git --config core.autocrlf=input
+    cd bakerydemo
+    docker compose up --build -d
+    ```
+  </Step>
+
+  <Step title="Setup Database">
+    Wait 10 seconds for the database to initialize, then run:
+
+    ```bash
+    docker compose run app /venv/bin/python manage.py migrate
+    docker compose run app /venv/bin/python manage.py load_initial_data
+    ```
+
+    <Note>
+    If you encounter a database error, wait another 10 seconds and retry.
+    </Note>
+  </Step>
+
+  <Step title="Start Services">
+    Start the application:
+
+    ```bash
+    docker compose up
+    ```
+
+    Access the site at http://localhost:8000/
+  </Step>
+</Steps>
+
+**Debugging Docker:**
+
+To view container logs in real-time:
+
+```bash
+docker compose logs -f
+```
+
+## Setup with Gitpod
+
+The fastest way to try Wagtail Bakery Demo without local installation:
+
+<Steps>
+  <Step title="Launch Gitpod">
+    Click the button to open a pre-configured development environment:
+
+    [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/wagtail/bakerydemo/)
+
+    <Note>Requires a GitHub account</Note>
+  </Step>
+
+  <Step title="Access the Site">
+    Once Gitpod loads and the preview appears in the "Simple Browser" panel, click the arrow button next to the URL to open in a new tab.
+
+    Navigate to `/admin/` and login with `admin` / `changeme`
+  </Step>
+</Steps>
+
+## Setup with Vagrant
+
+For developers who prefer VM-based development:
+
+<Steps>
+  <Step title="Install Dependencies">
+    Install the required tools:
+    - [Vagrant](https://www.vagrantup.com/)
+    - [VirtualBox](https://www.virtualbox.org/)
+  </Step>
+
+  <Step title="Launch VM">
+    ```bash
+    git clone https://github.com/wagtail/bakerydemo.git
+    cd bakerydemo
+    vagrant up
+    vagrant ssh
+    ```
+  </Step>
+
+  <Step title="Start Server">
+    Inside the SSH session:
+
+    ```bash
+    ./manage.py runserver 0.0.0.0:8000
+    ```
+
+    Access at http://localhost:8000/
+  </Step>
+</Steps>
+
+To stop: Use `Ctrl+c` to stop the server, `exit` to leave SSH, then `vagrant halt`.
+
+## Database Configuration
+
+By default, the project uses SQLite for development. You can configure a different database using environment variables.
+
+### PostgreSQL Setup
+
+Set the `DATABASE_URL` environment variable:
+
+```bash
+export DATABASE_URL="postgres://user:password@localhost:5432/bakerydemo"
+```
+
+Or add it to your `.env` file:
+
+```bash
+DATABASE_URL=postgres://user:password@localhost:5432/bakerydemo
+```
+
+<Note>
+When using PostgreSQL, `django.contrib.postgres` is automatically added to `INSTALLED_APPS`.
+</Note>
+
+## Development Settings
+
+The project uses a layered settings structure:
+
+```
+bakerydemo/settings/
+├── base.py          # Core settings
+├── dev.py           # Development overrides
+├── production.py    # Production settings
+├── test.py          # Test settings
+└── local.py         # Your local overrides (not in version control)
+```
+
+### Key Development Settings
+
+From `bakerydemo/settings/dev.py`:
+
+```python
+DEBUG = True
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+WAGTAILADMIN_BASE_URL = "http://localhost:8000"
+ALLOWED_HOSTS = ["*"]
+```
+
+### Custom Settings
+
+Add your overrides to `bakerydemo/settings/local.py`:
+
+```python
+# Enable Django Debug Toolbar
+INSTALLED_APPS += ['debug_toolbar']
+MIDDLEWARE += ['debug_toolbar.middleware.DebugToolbarMiddleware']
+INTERNAL_IPS = ['127.0.0.1']
+
+# Custom API keys
+GOOGLE_MAP_API_KEY = "your-api-key-here"
+```
+
+## Verifying Your Setup
+
+After installation, verify everything works:
+
+<CodeGroup>
+```bash Check Server
+curl http://localhost:8000/
+```
+
+```bash Check Admin
+curl http://localhost:8000/admin/login/
+```
+
+```bash Run Tests
+./manage.py test
+```
+</CodeGroup>
+
+## Default Users
+
+The demo data includes several user accounts for testing:
+
+| Username    | Password   | Role       | Purpose |
+|-------------|------------|------------|---------|
+| `admin`     | `changeme` | Superuser  | Full admin access |
+| `editor`    | `changeme` | Editor     | Content editing |
+| `moderator` | `changeme` | Moderator  | Content moderation |
+| `german`    | `changeme` | Superuser  | German language UI |
+| `arabic`    | `changeme` | Superuser  | Arabic language UI |
+| `inactive`  | `changeme` | Superuser  | Inactive account (testing) |
+
+## Next Steps
+
+Now that your environment is set up:
+
+<CardGroup cols={2}>
+  <Card title="Management Commands" icon="terminal" href="/development/management-commands">
+    Learn about available management commands
+  </Card>
+  <Card title="Customization Guide" icon="palette" href="/development/customization">
+    Customize the demo for your needs
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Contribute to the project
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/concepts/project-structure">
+    Understand the codebase organization
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Accordion title="Port 8000 already in use">
+  Specify a different port:
+  ```bash
+  ./manage.py runserver 8080
+  ```
+</Accordion>
+
+<Accordion title="Database migration errors">
+  Reset the database:
+  ```bash
+  rm bakerydemodb
+  ./manage.py migrate
+  ./manage.py load_initial_data
+  ```
+</Accordion>
+
+<Accordion title="Missing module errors">
+  Reinstall dependencies:
+  ```bash
+  pip install -r requirements/development.txt
+  ```
+</Accordion>
+
+<Accordion title="Permission denied on manage.py">
+  Make the file executable:
+  ```bash
+  chmod +x manage.py
+  ```
+</Accordion>

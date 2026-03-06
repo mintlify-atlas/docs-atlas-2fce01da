@@ -1,0 +1,375 @@
+---
+title: 'Images API'
+description: 'Access image assets and renditions through the Wagtail REST API'
+---
+
+## Overview
+
+The Images API endpoint provides access to all images uploaded to the Wagtail CMS. You can retrieve image metadata, original files, and generate custom renditions.
+
+## Endpoint
+
+```
+GET /api/v2/images/
+```
+
+## List All Images
+
+Retrieve a list of all images:
+
+<CodeGroup>
+```bash curl
+curl http://localhost:8000/api/v2/images/
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/images/')
+images = response.json()
+```
+
+```javascript JavaScript
+fetch('http://localhost:8000/api/v2/images/')
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "meta": {
+    "total_count": 42
+  },
+  "items": [
+    {
+      "id": 1,
+      "meta": {
+        "type": "wagtailimages.Image",
+        "detail_url": "http://localhost:8000/api/v2/images/1/"
+      },
+      "title": "Sourdough Bread"
+    }
+  ]
+}
+```
+
+## Get Single Image
+
+Retrieve a specific image by ID:
+
+<CodeGroup>
+```bash curl
+curl http://localhost:8000/api/v2/images/1/
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/images/1/')
+image = response.json()
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "id": 1,
+  "meta": {
+    "type": "wagtailimages.Image",
+    "detail_url": "http://localhost:8000/api/v2/images/1/"
+  },
+  "title": "Sourdough Bread",
+  "width": 2400,
+  "height": 1600
+}
+```
+
+## Query Parameters
+
+<ParamField query="fields" type="string">
+  Comma-separated list of fields to include. Use `*` for all fields.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Number of results per page (max 100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of results to skip
+</ParamField>
+
+<ParamField query="order" type="string">
+  Field to order by. Prefix with `-` for descending (e.g., `-created_at`)
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search query to filter images by title and tags
+</ParamField>
+
+## Response Fields
+
+### Default Fields
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the image
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  The image title
+</ResponseField>
+
+<ResponseField name="width" type="integer">
+  Original image width in pixels
+</ResponseField>
+
+<ResponseField name="height" type="integer">
+  Original image height in pixels
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Metadata about the image
+  
+  <ResponseField name="type" type="string">
+    The image model type (typically `wagtailimages.Image`)
+  </ResponseField>
+  
+  <ResponseField name="detail_url" type="string">
+    API URL for the full image details
+  </ResponseField>
+</ResponseField>
+
+### All Fields
+
+Request all fields using `?fields=*`:
+
+```bash
+curl "http://localhost:8000/api/v2/images/1/?fields=*"
+```
+
+#### Additional Fields with `*`
+
+```json
+{
+  "id": 1,
+  "meta": {
+    "type": "wagtailimages.Image",
+    "detail_url": "http://localhost:8000/api/v2/images/1/",
+    "download_url": "http://localhost:8000/media/original_images/sourdough.jpg"
+  },
+  "title": "Sourdough Bread",
+  "width": 2400,
+  "height": 1600,
+  "created_at": "2024-01-15T10:30:00Z",
+  "file": "/media/original_images/sourdough.jpg",
+  "file_size": 524288,
+  "file_hash": "abc123def456"
+}
+```
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp when the image was uploaded
+</ResponseField>
+
+<ResponseField name="file" type="string">
+  Relative path to the original image file
+</ResponseField>
+
+<ResponseField name="file_size" type="integer">
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="file_hash" type="string">
+  Hash of the image file for duplicate detection
+</ResponseField>
+
+<ResponseField name="meta.download_url" type="string">
+  Full URL to download the original image
+</ResponseField>
+
+## Image Renditions
+
+Wagtail can generate custom image renditions (resized/cropped versions) on the fly. Request renditions using the filter specification.
+
+### Rendition Filter Syntax
+
+Rendition filters use Wagtail's image filter syntax:
+
+| Filter | Description | Example |
+|--------|-------------|----------|
+| `width-<n>` | Resize to width | `width-400` |
+| `height-<n>` | Resize to height | `height-300` |
+| `max-<w>x<h>` | Fit within dimensions | `max-800x600` |
+| `min-<w>x<h>` | Cover dimensions | `min-800x600` |
+| `fill-<w>x<h>` | Crop to exact size | `fill-400x300` |
+| `original` | Original image | `original` |
+
+### Request Renditions
+
+Include the rendition filter in the `fields` parameter:
+
+```bash
+curl "http://localhost:8000/api/v2/images/1/?fields=width-400"
+```
+
+#### Response with Rendition
+
+```json
+{
+  "id": 1,
+  "meta": {
+    "type": "wagtailimages.Image",
+    "detail_url": "http://localhost:8000/api/v2/images/1/"
+  },
+  "title": "Sourdough Bread",
+  "width": 2400,
+  "height": 1600,
+  "width-400": {
+    "url": "http://localhost:8000/media/images/sourdough.width-400.jpg",
+    "width": 400,
+    "height": 267
+  }
+}
+```
+
+### Multiple Renditions
+
+Request multiple renditions in a single call:
+
+```bash
+curl "http://localhost:8000/api/v2/images/1/?fields=width-400,width-800,fill-200x200"
+```
+
+#### Response
+
+```json
+{
+  "id": 1,
+  "meta": {
+    "type": "wagtailimages.Image",
+    "detail_url": "http://localhost:8000/api/v2/images/1/"
+  },
+  "title": "Sourdough Bread",
+  "width": 2400,
+  "height": 1600,
+  "width-400": {
+    "url": "http://localhost:8000/media/images/sourdough.width-400.jpg",
+    "width": 400,
+    "height": 267
+  },
+  "width-800": {
+    "url": "http://localhost:8000/media/images/sourdough.width-800.jpg",
+    "width": 800,
+    "height": 533
+  },
+  "fill-200x200": {
+    "url": "http://localhost:8000/media/images/sourdough.fill-200x200.jpg",
+    "width": 200,
+    "height": 200
+  }
+}
+```
+
+## Common Use Cases
+
+### Responsive Images
+
+Generate multiple sizes for responsive images:
+
+<CodeGroup>
+```bash curl
+curl "http://localhost:8000/api/v2/images/?fields=width-320,width-640,width-1024,width-1920"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:8000/api/v2/images/',
+    params={'fields': 'width-320,width-640,width-1024,width-1920'}
+)
+images = response.json()
+
+for item in images['items']:
+    srcset = f"""
+        {item['width-320']['url']} 320w,
+        {item['width-640']['url']} 640w,
+        {item['width-1024']['url']} 1024w,
+        {item['width-1920']['url']} 1920w
+    """
+    print(srcset)
+```
+</CodeGroup>
+
+### Thumbnail Grid
+
+Generate square thumbnails for a grid layout:
+
+```bash
+curl "http://localhost:8000/api/v2/images/?fields=fill-300x300&limit=12"
+```
+
+### Hero Images
+
+Get large, optimized hero images:
+
+```bash
+curl "http://localhost:8000/api/v2/images/?fields=max-1920x1080,fill-1920x600"
+```
+
+## Search and Filter
+
+### Search by Title
+
+Find images by title:
+
+```bash
+curl "http://localhost:8000/api/v2/images/?search=bread"
+```
+
+### Order by Date
+
+Get most recent images:
+
+```bash
+curl "http://localhost:8000/api/v2/images/?fields=*&order=-created_at&limit=10"
+```
+
+## Best Practices
+
+<Note>
+  Renditions are generated on first request and cached. The first request for a new rendition may be slower than subsequent requests.
+</Note>
+
+### Request Only Needed Renditions
+
+Only request the renditions you'll actually use:
+
+```bash
+# Good: Request specific renditions
+curl "http://localhost:8000/api/v2/images/?fields=width-400,width-800"
+
+# Avoid: Requesting all fields when you only need renditions
+curl "http://localhost:8000/api/v2/images/?fields=*"
+```
+
+### Use Appropriate Formats
+
+Choose the right rendition filter for your use case:
+
+- **`max-`**: Maintain aspect ratio, fit within bounds
+- **`fill-`**: Exact dimensions, cropped to fit
+- **`width-`/`height-`**: Scale to one dimension
+
+### Cache Rendition URLs
+
+Rendition URLs are stable and can be cached client-side.
+
+## Next Steps
+
+- Learn about [Pages API](/api/pages) for accessing page content
+- Explore [Documents API](/api/documents) for file downloads
+- Review [API Overview](/api/overview) for common patterns

@@ -1,0 +1,357 @@
+---
+title: 'Recipe Models'
+description: 'Recipe page models including RecipePage, RecipeIndexPage, and related models'
+---
+
+## Overview
+
+The recipe models provide functionality for creating and managing recipe content. These models demonstrate advanced StreamField patterns with block counts, rich text fields, and author relationships.
+
+## RecipePage
+
+Recipe pages are more complex than blog pages, demonstrating advanced StreamField patterns.
+
+<Accordion title="Full Class Definition">
+```python
+class RecipePage(Page):
+    """
+    Recipe pages are more complex than blog pages, demonstrating more advanced StreamField patterns.
+    """
+
+    date_published = models.DateField("Date article published", blank=True, null=True)
+    subtitle = models.CharField(blank=True, max_length=255)
+    introduction = models.TextField(blank=True, max_length=500)
+    backstory = StreamField(
+        BaseStreamBlock(),
+        # Demonstrate block_counts to keep the backstory concise.
+        block_counts={
+            "heading_block": {"max_num": 1},
+            "image_block": {"max_num": 1},
+            "embed_block": {"max_num": 1},
+        },
+        blank=True,
+        use_json_field=True,
+        help_text="Use only a minimum number of headings and large blocks.",
+    )
+
+    # An example of using rich text for single-line content.
+    recipe_headline = RichTextField(
+        blank=True,
+        max_length=120,
+        features=["bold", "italic", "link"],
+        help_text="Keep to a single line",
+    )
+    body = StreamField(
+        RecipeStreamBlock(),
+        blank=True,
+        use_json_field=True,
+        help_text="The recipe's step-by-step instructions and any other relevant information.",
+    )
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="date_published" type="DateField">
+  Publication date for the recipe. Optional field used for sorting recipes by date.
+</ParamField>
+
+<ParamField path="subtitle" type="CharField">
+  Subtitle for the recipe page. Maximum length of 255 characters.
+</ParamField>
+
+<ParamField path="introduction" type="TextField">
+  Brief introduction to the recipe. Maximum length of 500 characters.
+</ParamField>
+
+<ParamField path="backstory" type="StreamField">
+  Rich content backstory using `BaseStreamBlock`. Demonstrates `block_counts` feature to limit:
+  - Heading blocks: maximum 1
+  - Image blocks: maximum 1
+  - Embed blocks: maximum 1
+  
+  This keeps the backstory section concise and focused.
+</ParamField>
+
+<ParamField path="recipe_headline" type="RichTextField">
+  Single-line rich text headline. Maximum 120 characters with limited formatting features: bold, italic, and link. Useful for creating emphasis in recipe titles.
+</ParamField>
+
+<ParamField path="body" type="StreamField">
+  Main recipe content using specialized `RecipeStreamBlock`. Contains step-by-step instructions and other relevant recipe information.
+</ParamField>
+
+### Content Panels
+
+```python
+content_panels = Page.content_panels + [
+    FieldPanel("date_published"),
+    # Using `title` to make a field larger.
+    FieldPanel("subtitle", classname="title"),
+    MultiFieldPanel(
+        [
+            # Example use case for HelpPanel.
+            HelpPanel(
+                "Refer to keywords analysis and correct international ingredients names to craft the best introduction backstory, and headline."
+            ),
+            FieldPanel("introduction"),
+            # StreamField inside a MultiFieldPanel.
+            FieldPanel("backstory"),
+            FieldPanel("recipe_headline"),
+        ],
+        heading="Preface",
+    ),
+    FieldPanel("body"),
+    MultipleChooserPanel(
+        "recipe_person_relationship",
+        chooser_field_name="person",
+        heading="Authors",
+        label="Author",
+        help_text="Select between one and three authors",
+        panels=None,
+        min_num=1,
+        max_num=3,
+    ),
+]
+```
+
+### Methods
+
+<Accordion title="authors()">
+```python
+def authors(self):
+    """
+    Returns the RecipePage's related people. Again note that we are using
+    the ParentalKey's related_name from the RecipePersonRelationship model
+    to access these objects. This allows us to access the Person objects
+    with a loop on the template. If we tried to access the recipe_person_
+    relationship directly we'd print `recipe.RecipePersonRelationship.None`
+    """
+    # Only return authors that are not in draft
+    return [
+        n.person
+        for n in self.recipe_person_relationship.filter(
+            person__live=True
+        ).select_related("person")
+    ]
+```
+
+Returns a list of live Person objects associated with the recipe through `RecipePersonRelationship`. Only includes published authors.
+</Accordion>
+
+### API Fields
+
+```python
+api_fields = [
+    APIField("date_published"),
+    APIField("subtitle"),
+    APIField("introduction"),
+    APIField("backstory"),
+    APIField("recipe_headline"),
+    APIField("body"),
+    APIField("recipe_person_relationship"),
+]
+```
+
+### Search Fields
+
+```python
+search_fields = Page.search_fields + [
+    index.SearchField("backstory"),
+    index.SearchField("body"),
+]
+```
+
+### Page Hierarchy
+
+- **Parent page types**: `RecipeIndexPage`
+- **Subpage types**: None (empty list - no child pages allowed)
+
+---
+
+## RecipeIndexPage
+
+Index page for recipes.
+
+<Accordion title="Full Class Definition">
+```python
+class RecipeIndexPage(Page):
+    """
+    Index page for recipe.
+    We need to alter the page model's context to return the child page objects,
+    the RecipePage objects, so that it works as an index page
+    """
+
+    introduction = models.TextField(help_text="Text to describe the page", blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel("introduction"),
+    ]
+
+    api_fields = [
+        APIField("introduction"),
+    ]
+
+    # Specifies that only RecipePage objects can live under this index page
+    subpage_types = ["RecipePage"]
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="introduction" type="TextField">
+  Text to describe the recipe index page.
+</ParamField>
+
+### Methods
+
+<Accordion title="children()">
+```python
+def children(self):
+    return self.get_children().specific().live()
+```
+
+Returns all live child RecipePage objects with their specific page types.
+</Accordion>
+
+<Accordion title="get_context(request)">
+```python
+def get_context(self, request):
+    context = super(RecipeIndexPage, self).get_context(request)
+    context["recipes"] = (
+        RecipePage.objects.descendant_of(self).live().order_by("-date_published")
+    )
+    return context
+```
+
+Adds `recipes` to the template context, ordered by publication date (newest first).
+</Accordion>
+
+### Page Hierarchy
+
+- **Subpage types**: `RecipePage`
+
+---
+
+## RecipePersonRelationship
+
+Defines the relationship between RecipePage and Person models.
+
+<Accordion title="Full Class Definition">
+```python
+class RecipePersonRelationship(Orderable, models.Model):
+    """
+    This defines the relationship between the `Person` within the `base`
+    app and the RecipePage below. This allows people to be added to a RecipePage.
+
+    We have created a two way relationship between RecipePage and Person using
+    the ParentalKey and ForeignKey
+    """
+
+    page = ParentalKey(
+        "RecipePage",
+        related_name="recipe_person_relationship",
+        on_delete=models.CASCADE,
+    )
+    person = models.ForeignKey(
+        "base.Person",
+        related_name="person_recipe_relationship",
+        on_delete=models.CASCADE,
+    )
+    panels = [FieldPanel("person")]
+
+    api_fields = [
+        APIField("page"),
+        APIField("person"),
+    ]
+```
+</Accordion>
+
+### Fields
+
+<ParamField path="page" type="ParentalKey">
+  Reference to the RecipePage. Uses `related_name="recipe_person_relationship"` for reverse access.
+</ParamField>
+
+<ParamField path="person" type="ForeignKey">
+  Reference to the Person model in the base app. Uses `related_name="person_recipe_relationship"` for reverse access.
+</ParamField>
+
+---
+
+## Advanced Features
+
+### Block Counts
+
+RecipePage demonstrates Wagtail's `block_counts` feature on the `backstory` StreamField:
+
+```python
+backstory = StreamField(
+    BaseStreamBlock(),
+    block_counts={
+        "heading_block": {"max_num": 1},
+        "image_block": {"max_num": 1},
+        "embed_block": {"max_num": 1},
+    },
+    blank=True,
+    use_json_field=True,
+)
+```
+
+This limits editors to one heading, one image, and one embed block in the backstory section, encouraging concise content.
+
+### Rich Text Features
+
+The `recipe_headline` field demonstrates limited RichTextField features:
+
+```python
+recipe_headline = RichTextField(
+    blank=True,
+    max_length=120,
+    features=["bold", "italic", "link"],
+    help_text="Keep to a single line",
+)
+```
+
+Only bold, italic, and link formatting is available, preventing complex formatting in headlines.
+
+### Author Limits
+
+The content panel configuration limits recipes to 1-3 authors:
+
+```python
+MultipleChooserPanel(
+    "recipe_person_relationship",
+    chooser_field_name="person",
+    heading="Authors",
+    label="Author",
+    help_text="Select between one and three authors",
+    min_num=1,
+    max_num=3,
+)
+```
+
+---
+
+## Usage Example
+
+```python
+# Get all recipes ordered by publication date
+from bakerydemo.recipes.models import RecipePage, RecipeIndexPage
+
+recipes = RecipePage.objects.live().order_by('-date_published')
+
+# Get recipe authors
+for recipe in recipes:
+    authors = recipe.authors()
+    print(f"{recipe.title} by {', '.join([str(a) for a in authors])}")
+
+# Access recipe content
+recipe = RecipePage.objects.first()
+print(f"Headline: {recipe.recipe_headline}")
+print(f"Introduction: {recipe.introduction}")
+
+# Get all recipes from an index page
+index = RecipeIndexPage.objects.first()
+recipes = index.children()
+```

@@ -1,0 +1,605 @@
+---
+title: StreamField Blocks
+description: Understanding Wagtail's flexible content block system in the Bakery Demo
+---
+
+StreamField is one of Wagtail's most powerful features, allowing editors to compose flexible page layouts using reusable content blocks. The Bakery Demo demonstrates various StreamField patterns from basic to advanced.
+
+## What is StreamField?
+
+StreamField is a Django field type that stores structured content as a sequence of blocks. Each block has a specific type (heading, paragraph, image, etc.) and can be added, removed, or reordered by editors.
+
+```python
+from wagtail.fields import StreamField
+from bakerydemo.base.blocks import BaseStreamBlock
+
+class BlogPage(Page):
+    body = StreamField(
+        BaseStreamBlock(),
+        verbose_name="Page body",
+        blank=True,
+        use_json_field=True
+    )
+```
+
+<Note>
+  `use_json_field=True` stores StreamField data as JSON in the database, which is more efficient than the legacy format.
+</Note>
+
+## BaseStreamBlock
+
+The `BaseStreamBlock` defined in `bakerydemo/base/blocks.py` is the foundation for most pages:
+
+```python
+from wagtail.blocks import (
+    CharBlock,
+    RichTextBlock,
+    StreamBlock,
+    StructBlock,
+)
+from wagtail.embeds.blocks import EmbedBlock
+from wagtail.images.blocks import ImageChooserBlock
+
+class BaseStreamBlock(StreamBlock):
+    """Define the custom blocks that StreamField will utilize."""
+    
+    heading_block = HeadingBlock()
+    paragraph_block = RichTextBlock(
+        icon="pilcrow",
+        template="blocks/paragraph_block.html",
+        preview_value="""
+            <h2>Our bread pledge</h2>
+            <p>As a bakery, <b>breads</b> have <i>always</i> been in our hearts.
+            <a href="https://en.wikipedia.org/wiki/Staple_food">Staple foods</a>
+            are essential for society, and – bread is the tastiest of all.</p>
+        """,
+        description="A rich text paragraph",
+    )
+    image_block = CaptionedImageBlock()
+    block_quote = BlockQuote()
+    embed_block = EmbedBlock(
+        help_text="Insert an embed URL e.g https://www.youtube.com/watch?v=SGJFWirQ3ks",
+        icon="media",
+        template="blocks/embed_block.html",
+        preview_value="https://www.youtube.com/watch?v=mwrGSfiB1Mg",
+        description="An embedded video or other media",
+    )
+```
+
+<Accordion title="Block Configuration Options">
+  - `icon`: Icon to display in the admin interface
+  - `template`: Template file for rendering the block
+  - `preview_value`: Sample data for the Wagtail styleguide
+  - `description`: Help text shown to editors
+  - `help_text`: Additional guidance for editors
+</Accordion>
+
+## Built-in Block Types
+
+Wagtail provides several block types out of the box:
+
+<CardGroup cols={2}>
+  <Card title="CharBlock" icon="font">
+    Single-line text input
+  </Card>
+  <Card title="TextBlock" icon="align-left">
+    Multi-line plain text
+  </Card>
+  <Card title="RichTextBlock" icon="bold">
+    Rich text editor with formatting
+  </Card>
+  <Card title="ChoiceBlock" icon="list">
+    Dropdown selection
+  </Card>
+  <Card title="ImageChooserBlock" icon="image">
+    Image selection from media library
+  </Card>
+  <Card title="EmbedBlock" icon="play">
+    Embedded content (YouTube, etc.)
+  </Card>
+  <Card title="ListBlock" icon="list-ol">
+    Repeating list of blocks
+  </Card>
+  <Card title="StreamBlock" icon="layer-group">
+    Nested blocks
+  </Card>
+  <Card title="StructBlock" icon="cubes">
+    Group of fields as one block
+  </Card>
+</CardGroup>
+
+## Custom Block Examples
+
+### HeadingBlock
+
+A structured block that lets editors choose heading levels:
+
+```python
+from wagtail.blocks import CharBlock, ChoiceBlock, StructBlock
+
+class HeadingBlock(StructBlock):
+    """Custom StructBlock that allows the user to select h2 - h4 sizes for headers."""
+    
+    heading_text = CharBlock(classname="title", required=True)
+    size = ChoiceBlock(
+        choices=[
+            ("", "Select a header size"),
+            ("h2", "H2"),
+            ("h3", "H3"),
+            ("h4", "H4"),
+        ],
+        blank=True,
+        required=False,
+    )
+    
+    class Meta:
+        icon = "title"
+        template = "blocks/heading_block.html"
+        preview_value = {"heading_text": "Healthy bread types", "size": "h2"}
+        description = "A heading with level two, three, or four"
+```
+
+The template `blocks/heading_block.html` renders the heading:
+
+```django
+{% load wagtailcore_tags %}
+
+{% if value.size == 'h2' %}
+    <h2>{{ value.heading_text }}</h2>
+{% elif value.size == 'h3' %}
+    <h3>{{ value.heading_text }}</h3>
+{% elif value.size == 'h4' %}
+    <h4>{{ value.heading_text }}</h4>
+{% else %}
+    <h2>{{ value.heading_text }}</h2>
+{% endif %}
+```
+
+### CaptionedImageBlock
+
+An image with optional caption and attribution:
+
+```python
+from wagtail.images.blocks import ImageChooserBlock
+from django.utils.functional import cached_property
+
+class CaptionedImageBlock(StructBlock):
+    """Custom StructBlock for utilizing images with associated caption and attribution."""
+    
+    image = ImageChooserBlock(required=True)
+    caption = CharBlock(required=False)
+    attribution = CharBlock(required=False)
+    
+    @cached_property
+    def preview_image(self):
+        # Cache the image object for previews
+        return get_image_model().objects.last()
+    
+    def get_preview_value(self):
+        return {
+            **self.meta.preview_value,
+            "image": self.preview_image,
+            "caption": self.preview_image.description,
+        }
+    
+    def get_api_representation(self, value, context=None):
+        data = super().get_api_representation(value, context)
+        data["image"] = get_image_api_representation(value["image"])
+        return data
+    
+    class Meta:
+        icon = "image"
+        template = "blocks/captioned_image_block.html"
+        preview_value = {"attribution": "The Wagtail Bakery"}
+        description = "An image with optional caption and attribution"
+```
+
+<Note>
+  The `get_api_representation` method customizes how the block appears in the API, providing image metadata instead of just an ID.
+</Note>
+
+### BlockQuote
+
+A quote with attribution and theme settings:
+
+```python
+class ThemeSettingsBlock(StructBlock):
+    theme = ChoiceBlock(
+        choices=[
+            ("default", "Default"),
+            ("highlight", "Highlight"),
+        ],
+        required=False,
+        default="default",
+    )
+    text_size = ChoiceBlock(
+        choices=[
+            ("default", "Default"),
+            ("large", "Large"),
+        ],
+        required=False,
+        default="default",
+    )
+    
+    class Meta:
+        icon = "cog"
+        label_format = "Theme: {theme}, Text size: {text_size}"
+
+class BlockQuote(StructBlock):
+    """Custom StructBlock that allows the user to attribute a quote to the author."""
+    
+    text = TextBlock()
+    attribute_name = CharBlock(
+        blank=True, 
+        required=False, 
+        label="e.g. Mary Berry"
+    )
+    settings = ThemeSettingsBlock(collapsed=True)
+    
+    class Meta:
+        icon = "openquote"
+        template = "blocks/blockquote.html"
+        preview_value = {
+            "text": (
+                "If you read a lot you're well read / "
+                "If you eat a lot you're well bread."
+            ),
+            "attribute_name": "Willie Wagtail",
+        }
+        description = "A quote with an optional attribution"
+```
+
+## Advanced Recipe Blocks
+
+The recipes app demonstrates more complex StreamField patterns in `bakerydemo/recipes/blocks.py`:
+
+### RecipeStreamBlock
+
+An extended StreamBlock with recipe-specific blocks organized into groups:
+
+```python
+from wagtail.blocks import FloatBlock, ListBlock
+from wagtail.contrib.table_block.blocks import TableBlock
+from wagtail.contrib.typed_table_block.blocks import TypedTableBlock
+
+class RecipeStreamBlock(StreamBlock):
+    """Define the custom blocks that StreamField will utilize."""
+    
+    # Content blocks
+    heading_block = HeadingBlock(group="Content")
+    paragraph_block = RichTextBlock(
+        icon="pilcrow", 
+        template="blocks/paragraph_block.html", 
+        group="Content"
+    )
+    block_quote = BlockQuote(group="Content")
+    
+    # Table blocks
+    table_block = TableBlock(
+        group="Content",
+        description="A table of data with plain text cells",
+        preview_value={
+            "first_row_is_table_header": "True",
+            "data": [
+                ["Bread type", "Origin"],
+                ["Anpan", "Japan"],
+                ["Crumpet", "United Kingdom"],
+            ],
+        },
+    )
+    
+    typed_table_block = TypedTableBlock(
+        [
+            ("text", CharBlock()),
+            ("numeric", FloatBlock()),
+            ("rich_text", RichTextBlock()),
+            ("image", CustomImageBlock()),
+        ],
+        group="Content",
+        description="A table with cells that can include text, numbers, rich text, and images",
+    )
+    
+    # Media blocks
+    image_block = CustomImageBlock(group="Media")
+    embed_block = EmbedBlock(
+        help_text="Insert an embed URL",
+        icon="media",
+        template="blocks/embed_block.html",
+        group="Media",
+    )
+    
+    # Cooking blocks
+    ingredients_list = ListBlock(
+        RichTextBlock(features=["bold", "italic", "link"]),
+        min_num=2,
+        max_num=10,
+        icon="list-ol",
+        group="Cooking",
+        preview_value=["<p>200g flour</p>", "<p>1 egg</p>", "<p>1 cup of sugar</p>"],
+        description="A list of ingredients with optional formatting",
+    )
+    
+    steps_list = ListBlock(
+        RecipeStepBlock(),
+        min_num=2,
+        max_num=10,
+        icon="tasks",
+        group="Cooking",
+        description="A list of steps with difficulty ratings",
+    )
+```
+
+<Note>
+  The `group` parameter organizes blocks into collapsible sections in the admin interface, making it easier for editors to find the right block type.
+</Note>
+
+### RecipeStepBlock
+
+A custom block for recipe steps with difficulty ratings:
+
+```python
+from django import forms
+
+class RecipeStepBlock(StructBlock):
+    text = RichTextBlock(features=["bold", "italic", "link"])
+    difficulty = ChoiceBlock(
+        widget=forms.RadioSelect,
+        choices=[("S", "Small"), ("M", "Medium"), ("L", "Large")],
+        default="S",
+    )
+    
+    class Meta:
+        template = "blocks/recipe_step_block.html"
+        icon = "tick"
+```
+
+## ListBlock Pattern
+
+ListBlock creates repeating instances of a single block type:
+
+```python
+ingredients_list = ListBlock(
+    RichTextBlock(features=["bold", "italic", "link"]),
+    min_num=2,      # Require at least 2 items
+    max_num=10,     # Allow at most 10 items
+    icon="list-ol",
+    group="Cooking",
+)
+```
+
+In templates:
+
+```django
+{% for ingredient in value.ingredients_list %}
+    <li>{{ ingredient }}</li>
+{% endfor %}
+```
+
+## StreamField Configuration Options
+
+When adding StreamField to a model, you can configure its behavior:
+
+```python
+class RecipePage(Page):
+    backstory = StreamField(
+        BaseStreamBlock(),
+        # Limit certain block types
+        block_counts={
+            "heading_block": {"max_num": 1},
+            "image_block": {"max_num": 1},
+            "embed_block": {"max_num": 1},
+        },
+        blank=True,
+        use_json_field=True,
+        help_text="Use only a minimum number of headings and large blocks.",
+    )
+```
+
+<Accordion title="StreamField Parameters">
+  - `block_types`: The StreamBlock class defining available blocks
+  - `block_counts`: Dict limiting how many of each block type can be added
+  - `blank`: Whether the field can be empty
+  - `use_json_field`: Store as JSON (recommended)
+  - `help_text`: Guidance shown to editors
+  - `verbose_name`: Human-readable field name
+</Accordion>
+
+## Block Templates
+
+Each block type can have a custom template. Example from `blocks/captioned_image_block.html`:
+
+```django
+{% load wagtailimages_tags %}
+
+<figure class="captioned-image">
+    {% image value.image fill-800x450 as img %}
+    <img src="{{ img.url }}" alt="{{ value.image.title }}" />
+    
+    {% if value.caption or value.attribution %}
+        <figcaption>
+            {% if value.caption %}
+                <p class="caption">{{ value.caption }}</p>
+            {% endif %}
+            {% if value.attribution %}
+                <p class="attribution">{{ value.attribution }}</p>
+            {% endif %}
+        </figcaption>
+    {% endif %}
+</figure>
+```
+
+## Rendering StreamField in Templates
+
+The simplest way to render a StreamField:
+
+```django
+{% load wagtailcore_tags %}
+
+{{ page.body }}
+```
+
+For more control, iterate over blocks:
+
+```django
+{% for block in page.body %}
+    <div class="block block-{{ block.block_type }}">
+        {% include_block block %}
+    </div>
+{% endfor %}
+```
+
+## API Representation
+
+Customize how blocks appear in the Wagtail API:
+
+```python
+class CaptionedImageBlock(StructBlock):
+    def get_api_representation(self, value, context=None):
+        data = super().get_api_representation(value, context)
+        # Add custom image data
+        data["image"] = {
+            "id": value["image"].pk,
+            "title": value["image"].title,
+            "url": value["image"].file.url,
+        }
+        return data
+```
+
+Access via API:
+
+```bash
+GET /api/v2/pages/123/?fields=body
+```
+
+Response includes StreamField data:
+
+```json
+{
+  "body": [
+    {
+      "type": "heading_block",
+      "value": {
+        "heading_text": "Our Story",
+        "size": "h2"
+      }
+    },
+    {
+      "type": "image_block",
+      "value": {
+        "image": {
+          "id": 42,
+          "title": "Bakery front",
+          "url": "/media/images/bakery.jpg"
+        },
+        "caption": "Our main location",
+        "attribution": "Photo by John Doe"
+      }
+    }
+  ]
+}
+```
+
+## Preview Values
+
+Preview values provide sample data for the Wagtail Styleguide:
+
+```python
+class HeadingBlock(StructBlock):
+    class Meta:
+        preview_value = {
+            "heading_text": "Healthy bread types",
+            "size": "h2"
+        }
+```
+
+View the styleguide at `/admin/styleguide/` to see all blocks with their preview values.
+
+## Best Practices
+
+<Steps>
+  <Step title="Keep Blocks Focused">
+    Each block should do one thing well. Create multiple simple blocks rather than one complex block.
+  </Step>
+  
+  <Step title="Use Descriptive Names">
+    Name blocks clearly: `HeadingBlock` is better than `Block1`. Use `description` to provide context.
+  </Step>
+  
+  <Step title="Provide Preview Values">
+    Always set `preview_value` so blocks appear correctly in the styleguide and during development.
+  </Step>
+  
+  <Step title="Organize with Groups">
+    Use the `group` parameter to organize related blocks, especially in large StreamBlock classes.
+  </Step>
+  
+  <Step title="Set Sensible Limits">
+    Use `min_num`, `max_num`, and `block_counts` to guide editors toward good content structure.
+  </Step>
+  
+  <Step title="Custom Templates">
+    Create custom templates for complex blocks to separate presentation from structure.
+  </Step>
+</Steps>
+
+## Common Patterns
+
+<Tabs>
+  <Tab title="Basic Content">
+    ```python
+    body = StreamField([
+        ('heading', HeadingBlock()),
+        ('paragraph', RichTextBlock()),
+        ('image', ImageChooserBlock()),
+    ])
+    ```
+  </Tab>
+  
+  <Tab title="With Grouping">
+    ```python
+    body = StreamField([
+        ('heading', HeadingBlock(group="Content")),
+        ('paragraph', RichTextBlock(group="Content")),
+        ('image', ImageChooserBlock(group="Media")),
+        ('video', EmbedBlock(group="Media")),
+    ])
+    ```
+  </Tab>
+  
+  <Tab title="With Limits">
+    ```python
+    body = StreamField(
+        BaseStreamBlock(),
+        block_counts={
+            'heading_block': {'max_num': 5},
+            'image_block': {'max_num': 3},
+        }
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Nested Blocks">
+    ```python
+    class SectionBlock(StructBlock):
+        heading = CharBlock()
+        content = StreamBlock([
+            ('paragraph', RichTextBlock()),
+            ('image', ImageChooserBlock()),
+        ])
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Learn about overall architecture
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/concepts/project-structure">
+    Explore directory layout
+  </Card>
+  <Card title="Content Models" icon="database" href="/concepts/content-models">
+    Understand page models
+  </Card>
+</CardGroup>

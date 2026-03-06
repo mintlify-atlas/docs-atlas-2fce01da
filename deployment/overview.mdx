@@ -1,0 +1,251 @@
+---
+title: "Deployment Overview"
+description: "Learn about the available deployment options and infrastructure requirements for the Wagtail Bakery Demo"
+---
+
+## Introduction
+
+The Wagtail Bakery Demo is designed to be deployed on various platforms with flexible infrastructure options. This guide covers the deployment strategies, infrastructure requirements, and platform-specific considerations.
+
+## Deployment Options
+
+The project supports multiple deployment strategies:
+
+<CardGroup cols={2}>
+  <Card title="Docker" icon="docker" href="/deployment/docker">
+    Deploy using Docker containers with docker-compose for local or cloud environments
+  </Card>
+  <Card title="Heroku" icon="cloud" href="/deployment/heroku">
+    One-click deployment to Heroku with automated builds and releases
+  </Card>
+</CardGroup>
+
+## Infrastructure Requirements
+
+### Core Services
+
+The Wagtail Bakery Demo requires the following services to run in production:
+
+<Steps>
+  <Step title="PostgreSQL Database">
+    **Version**: PostgreSQL 18.1 or higher recommended
+    
+    The application uses PostgreSQL as its primary database. Configure via the `DATABASE_URL` environment variable.
+    
+    ```bash
+    DATABASE_URL=postgres://user:password@host:5432/database
+    ```
+  </Step>
+  
+  <Step title="Redis Cache (Optional but Recommended)">
+    **Version**: Redis 8.4 or higher recommended
+    
+    Redis is used for caching and session storage to improve performance. Configure via `REDIS_URL` or `REDIS_TLS_URL`.
+    
+    ```bash
+    REDIS_URL=redis://redis-host:6379
+    ```
+    
+    <Note>
+      If Redis is not available, the application will fall back to Django's local memory cache backend.
+    </Note>
+  </Step>
+  
+  <Step title="Python Runtime">
+    **Version**: Python 3.12
+    
+    The application is built and tested with Python 3.12. Ensure your deployment environment supports this version.
+  </Step>
+  
+  <Step title="WSGI Server">
+    **Server**: uWSGI
+    
+    The production build uses uWSGI as the application server with the following configuration:
+    - 2 worker processes
+    - 4 threads per worker
+    - HTTP keep-alive enabled
+    - Static file serving at `/media/`
+  </Step>
+</Steps>
+
+### Optional Services
+
+<AccordionGroup>
+  <Accordion title="Elasticsearch (Search)">
+    **Purpose**: Enhanced search capabilities
+    
+    Configure Elasticsearch for advanced search features:
+    
+    ```bash
+    ELASTICSEARCH_ENDPOINT=your-elasticsearch-host
+    ELASTICSEARCH_PORT=9200
+    ELASTICSEARCH_USE_SSL=on
+    ELASTICSEARCH_VERIFY_CERTS=on
+    ```
+    
+    Supports AWS Elasticsearch with authentication via AWS credentials.
+  </Accordion>
+  
+  <Accordion title="Cloud Storage (AWS S3 / Google Cloud Storage)">
+    **Purpose**: Media file storage
+    
+    For AWS S3:
+    ```bash
+    AWS_STORAGE_BUCKET_NAME=your-bucket
+    AWS_ACCESS_KEY_ID=your-access-key
+    AWS_SECRET_ACCESS_KEY=your-secret-key
+    AWS_S3_REGION_NAME=us-east-1
+    AWS_S3_CUSTOM_DOMAIN=cdn.example.com
+    ```
+    
+    For Google Cloud Storage:
+    ```bash
+    GS_BUCKET_NAME=your-bucket
+    GS_PROJECT_ID=your-project-id
+    ```
+  </Accordion>
+  
+  <Accordion title="Cloudflare (CDN/Cache Purging)">
+    **Purpose**: Frontend cache purging
+    
+    Configure Cloudflare for automatic cache purging when content is published:
+    
+    ```bash
+    FRONTEND_CACHE_CLOUDFLARE_ZONEID=your-zone-id
+    FRONTEND_CACHE_CLOUDFLARE_BEARER_TOKEN=your-token
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Environment Configuration
+
+### Required Environment Variables
+
+These variables must be set for production deployments:
+
+| Variable | Description | Example |
+|----------|-------------|--------|
+| `DJANGO_SECRET_KEY` | Django secret key for cryptographic signing | `your-secret-key-here` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://user:pass@host/db` |
+| `DJANGO_SETTINGS_MODULE` | Django settings module | `bakerydemo.settings.production` |
+
+### Optional Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `REDIS_URL` | Redis connection string | None (falls back to local memory) |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated list of allowed hosts | `*` |
+| `PRIMARY_HOST` | Primary domain for admin emails | None |
+| `DJANGO_DEBUG` | Enable debug mode (should be `off` in production) | `off` |
+
+<Warning>
+  Never set `DJANGO_DEBUG=on` in production environments. This exposes sensitive information and creates security vulnerabilities.
+</Warning>
+
+## Deployment Architecture
+
+### Container-Based Deployment
+
+The Docker-based deployment architecture:
+
+```
+┌─────────────────────────────────────────┐
+│         Load Balancer / Proxy           │
+└───────────────┬─────────────────────────┘
+                │
+┌───────────────▼─────────────────────────┐
+│   App Container (uWSGI + Django)        │
+│   - Port 8000                           │
+│   - Static files via WhiteNoise         │
+│   - Media volume mounted                │
+└─────┬──────────────────────┬────────────┘
+      │                      │
+┌─────▼──────────┐    ┌──────▼────────────┐
+│   PostgreSQL   │    │      Redis        │
+│   Container    │    │    Container      │
+└────────────────┘    └───────────────────┘
+```
+
+### Platform-as-a-Service Deployment
+
+For Heroku and similar PaaS platforms:
+
+```
+┌─────────────────────────────────────────┐
+│            Heroku Router                │
+└───────────────┬─────────────────────────┘
+                │
+┌───────────────▼─────────────────────────┐
+│         Web Dyno (uWSGI)                │
+│   - Auto-scaling enabled                │
+│   - Static files via WhiteNoise         │
+└─────┬──────────────────────┬────────────┘
+      │                      │
+┌─────▼──────────┐    ┌──────▼────────────┐
+│   Heroku       │    │   Heroku Redis    │
+│   Postgres     │    │                   │
+└────────────────┘    └───────────────────┘
+```
+
+## Security Considerations
+
+<Warning>
+  **Important Security Settings**
+  
+  The production settings include several security features enabled by default:
+  - HTTPS redirect (`SECURE_SSL_REDIRECT=True`)
+  - HSTS header (30 days by default)
+  - XSS filter enabled
+  - Content type nosniff enabled
+  - Secure proxy SSL header detection
+</Warning>
+
+### Basic Authentication
+
+Optionally enable basic authentication for staging environments:
+
+```bash
+BASIC_AUTH_ENABLED=true
+BASIC_AUTH_LOGIN=username
+BASIC_AUTH_PASSWORD=password
+BASIC_AUTH_WHITELISTED_HTTP_HOSTS=example.com,admin.example.com
+```
+
+## Static Files and Media
+
+### Static Files
+
+Static files are handled by [WhiteNoise](http://whitenoise.evans.io/) with compression and manifest storage:
+
+- **Storage Backend**: `whitenoise.storage.CompressedManifestStaticFilesStorage`
+- **Collection**: Static files are collected during the Docker build process
+- **Serving**: Efficiently served by WhiteNoise middleware
+
+### Media Files
+
+Media files (user uploads, images) can be stored:
+
+1. **Local Volume** (Docker): Mounted at `/code/bakerydemo/media/`
+2. **AWS S3**: Configure with `AWS_STORAGE_BUCKET_NAME`
+3. **Google Cloud Storage**: Configure with `GS_BUCKET_NAME`
+
+<Note>
+  For production deployments with multiple instances, use cloud storage (S3 or GCS) to ensure media files are accessible across all instances.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Setup" icon="docker" href="/deployment/docker">
+    Learn how to deploy with Docker and docker-compose
+  </Card>
+  <Card title="Heroku Deployment" icon="cloud" href="/deployment/heroku">
+    Deploy to Heroku in minutes
+  </Card>
+  <Card title="Production Settings" icon="gear" href="/deployment/production-settings">
+    Understand production configuration options
+  </Card>
+  <Card title="Getting Started" icon="rocket" href="/getting-started/installation">
+    Start with local development first
+  </Card>
+</CardGroup>

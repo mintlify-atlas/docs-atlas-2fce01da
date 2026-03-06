@@ -1,0 +1,613 @@
+---
+title: 'Customization Guide'
+description: 'Customize and extend the Wagtail Bakery Demo for your own projects'
+icon: 'palette'
+---
+
+The Bakery Demo is designed to showcase Wagtail features and provide code you can adapt for your own projects. This guide shows you how to customize various aspects of the demo.
+
+<Note>
+The Bakery Demo is **not** intended to be used as a starting point for your own site. Instead, use `wagtail start` to create a new project and copy patterns from the demo as needed.
+</Note>
+
+## Custom StreamField Blocks
+
+The demo includes several custom StreamField blocks that you can use as templates for your own content blocks.
+
+### Available Custom Blocks
+
+All custom blocks are defined in `bakerydemo/base/blocks.py`:
+
+<Accordion title="CaptionedImageBlock">
+  A `StructBlock` for images with captions and attribution:
+
+  ```python
+  class CaptionedImageBlock(StructBlock):
+      """
+      Custom `StructBlock` for utilizing images with associated caption and
+      attribution data
+      """
+      image = ImageChooserBlock(required=True)
+      caption = CharBlock(required=False)
+      attribution = CharBlock(required=False)
+
+      class Meta:
+          icon = "image"
+          template = "blocks/captioned_image_block.html"
+          preview_value = {"attribution": "The Wagtail Bakery"}
+          description = "An image with optional caption and attribution"
+  ```
+
+  **Features:**
+  - Image chooser with required validation
+  - Optional caption and attribution fields
+  - Custom API representation
+  - Preview values for the admin interface
+  - Custom template rendering
+
+  **Template:** `blocks/captioned_image_block.html`
+</Accordion>
+
+<Accordion title="HeadingBlock">
+  Structured heading block with configurable sizes:
+
+  ```python
+  class HeadingBlock(StructBlock):
+      """
+      Custom `StructBlock` that allows the user to select h2 - h4 sizes for headers
+      """
+      heading_text = CharBlock(classname="title", required=True)
+      size = ChoiceBlock(
+          choices=[
+              ("", "Select a header size"),
+              ("h2", "H2"),
+              ("h3", "H3"),
+              ("h4", "H4"),
+          ],
+          blank=True,
+          required=False,
+      )
+
+      class Meta:
+          icon = "title"
+          template = "blocks/heading_block.html"
+          preview_value = {"heading_text": "Healthy bread types", "size": "h2"}
+          description = "A heading with level two, three, or four"
+  ```
+
+  **Features:**
+  - Configurable heading levels (H2-H4)
+  - Title styling in admin
+  - Semantic HTML output
+</Accordion>
+
+<Accordion title="BlockQuote">
+  Quote block with attribution and theme settings:
+
+  ```python
+  class BlockQuote(StructBlock):
+      """
+      Custom `StructBlock` that allows the user to attribute a quote to the author
+      """
+      text = TextBlock()
+      attribute_name = CharBlock(blank=True, required=False, label="e.g. Mary Berry")
+      settings = ThemeSettingsBlock(collapsed=True)
+
+      class Meta:
+          icon = "openquote"
+          template = "blocks/blockquote.html"
+          preview_value = {
+              "text": (
+                  "If you read a lot you're well read / "
+                  "If you eat a lot you're well bread."
+              ),
+              "attribute_name": "Willie Wagtail",
+          }
+          description = "A quote with an optional attribution"
+  ```
+
+  **Features:**
+  - Quote text field
+  - Optional attribution
+  - Theme settings (default/highlight)
+  - Text size options
+</Accordion>
+
+<Accordion title="ThemeSettingsBlock">
+  Reusable settings block for theming:
+
+  ```python
+  class ThemeSettingsBlock(StructBlock):
+      theme = ChoiceBlock(
+          choices=[
+              ("default", "Default"),
+              ("highlight", "Highlight"),
+          ],
+          required=False,
+          default="default",
+      )
+      text_size = ChoiceBlock(
+          choices=[
+              ("default", "Default"),
+              ("large", "Large"),
+          ],
+          required=False,
+          default="default",
+      )
+
+      class Meta:
+          icon = "cog"
+          label_format = "Theme: {theme}, Text size: {text_size}"
+  ```
+
+  **Use Case:** Embedded in other blocks to provide consistent theming options.
+</Accordion>
+
+### BaseStreamBlock
+
+The main StreamField definition combining all blocks:
+
+```python
+class BaseStreamBlock(StreamBlock):
+    """
+    Define the custom blocks that `StreamField` will utilize
+    """
+    heading_block = HeadingBlock()
+    paragraph_block = RichTextBlock(
+        icon="pilcrow",
+        template="blocks/paragraph_block.html",
+        description="A rich text paragraph",
+    )
+    image_block = CaptionedImageBlock()
+    block_quote = BlockQuote()
+    embed_block = EmbedBlock(
+        help_text="Insert an embed URL e.g https://www.youtube.com/watch?v=...",
+        icon="media",
+        template="blocks/embed_block.html",
+        description="An embedded video or other media",
+    )
+```
+
+### Creating Your Own Blocks
+
+<Steps>
+  <Step title="Define the Block Class">
+    Create a new block in `blocks.py`:
+
+    ```python
+    from wagtail.blocks import StructBlock, CharBlock, IntegerBlock
+
+    class CallToActionBlock(StructBlock):
+        title = CharBlock(required=True)
+        description = CharBlock(required=False)
+        button_text = CharBlock(default="Learn More")
+        button_link = URLBlock(required=True)
+
+        class Meta:
+            icon = "link"
+            template = "blocks/call_to_action.html"
+            preview_value = {
+                "title": "Try Wagtail Today",
+                "description": "The best Django CMS",
+                "button_text": "Get Started",
+            }
+    ```
+  </Step>
+
+  <Step title="Create the Template">
+    Create `blocks/call_to_action.html`:
+
+    ```django
+    <div class="cta-block">
+      <h3>{{ value.title }}</h3>
+      {% if value.description %}
+        <p>{{ value.description }}</p>
+      {% endif %}
+      <a href="{{ value.button_link }}" class="button">
+        {{ value.button_text }}
+      </a>
+    </div>
+    ```
+  </Step>
+
+  <Step title="Add to BaseStreamBlock">
+    Include your block in the StreamBlock:
+
+    ```python
+    class BaseStreamBlock(StreamBlock):
+        # ... existing blocks ...
+        call_to_action = CallToActionBlock()
+    ```
+  </Step>
+
+  <Step title="Update Page Models">
+    Use the StreamBlock in your page models:
+
+    ```python
+    from bakerydemo.base.blocks import BaseStreamBlock
+
+    class MyPage(Page):
+        body = StreamField(
+            BaseStreamBlock(),
+            blank=True,
+            use_json_field=True,
+        )
+    ```
+  </Step>
+</Steps>
+
+## Wagtail Hooks
+
+Wagtail hooks allow you to customize the admin interface and register additional functionality.
+
+### Base App Hooks
+
+From `bakerydemo/base/wagtail_hooks.py`:
+
+<Accordion title="Register Custom Icons">
+  Add Font Awesome SVG icons to Wagtail:
+
+  ```python
+  from wagtail import hooks
+
+  @hooks.register("register_icons")
+  def register_icons(icons):
+      return icons + [
+          "wagtailfontawesomesvg/solid/suitcase.svg",
+          "wagtailfontawesomesvg/solid/utensils.svg",
+      ]
+  ```
+
+  **Usage:** These icons become available for use in menu configurations and StreamField blocks.
+  
+  See available icons at [wagtail-font-awesome-svg](https://github.com/allcaps/wagtail-font-awesome-svg)
+</Accordion>
+
+<Accordion title="Custom Userbar Items">
+  Modify the Wagtail userbar (front-end toolbar):
+
+  ```python
+  from wagtail.admin.userbar import AccessibilityItem
+
+  class CustomAccessibilityItem(AccessibilityItem):
+      axe_run_only = None
+
+  @hooks.register("construct_wagtail_userbar")
+  def replace_userbar_accessibility_item(request, items, page):
+      items[:] = [
+          CustomAccessibilityItem() if isinstance(item, AccessibilityItem) else item
+          for item in items
+      ]
+  ```
+</Accordion>
+
+<Accordion title="Custom ViewSets">
+  Customize snippet admin interfaces:
+
+  ```python
+  from wagtail.snippets.views.snippets import SnippetViewSet
+  from wagtail.snippets.models import register_snippet
+
+  class PersonViewSet(SnippetViewSet):
+      model = Person
+      menu_label = "People"
+      icon = "group"
+      list_display = ("first_name", "last_name", "job_title", "thumb_image")
+      list_export = ("first_name", "last_name", "job_title")
+      filterset_class = PersonFilterSet
+
+  # Group multiple ViewSets
+  class BakerySnippetViewSetGroup(SnippetViewSetGroup):
+      menu_label = "Bakery Misc"
+      menu_icon = "utensils"
+      menu_order = 300
+      items = (PersonViewSet, FooterTextViewSet)
+
+  register_snippet(BakerySnippetViewSetGroup)
+  ```
+</Accordion>
+
+### Breads App Hooks
+
+From `bakerydemo/breads/wagtail_hooks.py`:
+
+<Accordion title="Custom Page Listing ViewSets">
+  Customize page listing interfaces with custom columns and filters:
+
+  ```python
+  from wagtail.admin.viewsets.pages import PageListingViewSet
+  from django.utils.functional import classproperty
+
+  class BreadPageListingViewSet(PageListingViewSet):
+      menu_icon = "folder-open-inverse"
+      menu_label = "Bread pages"
+      model = BreadPage
+      filterset_class = BreadPageFilterSet
+
+      @classproperty
+      def columns(cls):
+          # Replace the parent column with a custom origin column
+          origin_column = Column("origin", sort_key="origin", width="12%")
+          return [
+              col if col.name != "parent" else origin_column for col in super().columns
+          ]
+  ```
+</Accordion>
+
+<Accordion title="Custom Filters">
+  Add custom filter interfaces:
+
+  ```python
+  from django_filters.filters import ModelChoiceFilter, ModelMultipleChoiceFilter
+  from wagtail.admin.views.pages.listing import PageFilterSet
+
+  class BreadPageFilterSet(PageFilterSet):
+      origin = ModelChoiceFilter(
+          queryset=Country.objects.all(),
+          widget=RadioSelect
+      )
+      bread_type = ModelMultipleChoiceFilter(
+          queryset=BreadType.objects.all(),
+          widget=CheckboxSelectMultiple,
+      )
+      ingredients = ModelMultipleChoiceFilter(
+          queryset=BreadIngredient.objects.all(),
+          widget=CheckboxSelectMultiple,
+      )
+
+      class Meta:
+          model = BreadPage
+          fields = []
+  ```
+</Accordion>
+
+<Accordion title="ModelViewSet for Sortable Models">
+  Use ModelViewSet for models with drag-and-drop ordering:
+
+  ```python
+  from wagtail.admin.viewsets.model import ModelViewSet
+
+  class CountryModelViewSet(ModelViewSet):
+      model = Country
+      ordering = "title"
+      search_fields = ("title",)
+      icon = "globe"
+      inspect_view_enabled = True
+      sort_order_field = "sort_order"  # Enables drag-and-drop
+
+      panels = [
+          FieldPanel("title"),
+      ]
+  ```
+</Accordion>
+
+### Creating Your Own Hooks
+
+<Steps>
+  <Step title="Create wagtail_hooks.py">
+    Add a `wagtail_hooks.py` file to your app:
+
+    ```python
+    # myapp/wagtail_hooks.py
+    from wagtail import hooks
+    ```
+  </Step>
+
+  <Step title="Register a Hook">
+    Use the `@hooks.register` decorator:
+
+    ```python
+    @hooks.register('insert_editor_js')
+    def editor_js():
+        return '<script>console.log("Custom editor JS");</script>'
+    ```
+  </Step>
+
+  <Step title="Test Your Hook">
+    Restart the development server and verify your hook is working.
+  </Step>
+</Steps>
+
+**Available Hooks:**
+- `register_icons` - Add custom icons
+- `construct_main_menu` - Customize admin menu
+- `construct_wagtail_userbar` - Modify front-end toolbar
+- `insert_editor_js` - Add JavaScript to editor
+- `insert_editor_css` - Add CSS to editor
+- `before_serve_page` - Intercept page serving
+- `after_create_page` - Run code after page creation
+- And many more...
+
+See [Wagtail Hooks Documentation](https://docs.wagtail.org/en/stable/reference/hooks.html) for a complete list.
+
+## Custom Models
+
+The demo includes several custom models you can use as examples:
+
+### Page Models
+
+- **HomePage** (`base/models.py`) - Main landing page with hero section
+- **StandardPage** (`base/models.py`) - Generic content page with mixins
+- **BlogPage** (`blog/models.py`) - Blog post with date and tags
+- **BreadPage** (`breads/models.py`) - Bread details with ingredients and origin
+- **LocationPage** (`locations/models.py`) - Location with map coordinates
+
+### Snippet Models
+
+- **Person** (`base/models.py`) - Team member profiles
+- **FooterText** (`base/models.py`) - Reusable footer content
+- **Country** (`breads/models.py`) - Countries with sortable ordering
+- **BreadType** (`breads/models.py`) - Bread categories
+- **BreadIngredient** (`breads/models.py`) - Ingredient definitions
+
+### Extending Models
+
+<CodeGroup>
+```python Add Fields
+from django.db import models
+from wagtail.admin.panels import FieldPanel
+
+class BlogPage(Page):
+    # Add new field
+    read_time = models.IntegerField(
+        default=5,
+        help_text="Estimated reading time in minutes"
+    )
+
+    content_panels = Page.content_panels + [
+        FieldPanel('read_time'),
+    ]
+```
+
+```python Add Relationships
+from modelcluster.fields import ParentalManyToManyField
+
+class BlogPage(Page):
+    # Add many-to-many relationship
+    related_products = ParentalManyToManyField(
+        'products.Product',
+        blank=True,
+    )
+
+    content_panels = Page.content_panels + [
+        FieldPanel('related_products', widget=forms.CheckboxSelectMultiple),
+    ]
+```
+
+```python Override Methods
+class BlogPage(Page):
+    def get_context(self, request):
+        context = super().get_context(request)
+        # Add custom context
+        context['recent_posts'] = BlogPage.objects.live().order_by('-date')[:5]
+        return context
+```
+</CodeGroup>
+
+## Settings Customization
+
+### Local Settings Override
+
+Use `bakerydemo/settings/local.py` for environment-specific settings:
+
+```python
+# Enable debug toolbar
+INSTALLED_APPS += ['debug_toolbar']
+MIDDLEWARE += ['debug_toolbar.middleware.DebugToolbarMiddleware']
+INTERNAL_IPS = ['127.0.0.1']
+
+# Custom database
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'custom_db',
+        'USER': 'myuser',
+        'PASSWORD': 'mypassword',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
+
+# Email configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'your-email@gmail.com'
+EMAIL_HOST_PASSWORD = 'your-password'
+
+# Custom Wagtail settings
+WAGTAIL_SITE_NAME = 'My Custom Bakery'
+```
+
+### Environment Variables
+
+Use `.env` file for sensitive configuration:
+
+```bash
+# Database
+DATABASE_URL=postgres://user:pass@localhost:5432/dbname
+
+# Admin
+ADMIN_PASSWORD=secure-password-here
+
+# APIs
+GOOGLE_MAP_API_KEY=your-api-key
+
+# Content Security Policy
+CSP_DEFAULT_SRC="'self'"
+CSP_SCRIPT_SRC="'self', 'unsafe-inline'"
+```
+
+## Frontend Customization
+
+### Templates
+
+Custom templates are in each app's `templates/` directory:
+
+```
+bakerydemo/
+├── base/templates/
+│   ├── base.html
+│   ├── blocks/
+│   │   ├── captioned_image_block.html
+│   │   ├── heading_block.html
+│   │   └── ...
+│   └── ...
+├── blog/templates/
+│   └── blog/
+│       ├── blog_index_page.html
+│       └── blog_page.html
+└── ...
+```
+
+### Static Files
+
+Static assets are in `bakerydemo/static/`:
+
+```
+bakerydemo/static/
+├── css/
+├── js/
+└── images/
+```
+
+Customize by:
+1. Editing existing files
+2. Adding new static files
+3. Running `./manage.py collectstatic` for production
+
+## API Customization
+
+The demo includes a Wagtail API in `bakerydemo/api.py`:
+
+```python
+from wagtail.api.v2.router import WagtailAPIRouter
+from wagtail.api.v2.views import PagesAPIViewSet
+from wagtail.images.api.v2.views import ImagesAPIViewSet
+from wagtail.documents.api.v2.views import DocumentsAPIViewSet
+
+api_router = WagtailAPIRouter('wagtailapi')
+api_router.register_endpoint('pages', PagesAPIViewSet)
+api_router.register_endpoint('images', ImagesAPIViewSet)
+api_router.register_endpoint('documents', DocumentsAPIViewSet)
+```
+
+**Access at:** `http://localhost:8000/api/v2/`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Learn how to contribute your improvements
+  </Card>
+  <Card title="Wagtail Documentation" icon="book" href="https://docs.wagtail.org">
+    Explore official Wagtail docs
+  </Card>
+  <Card title="StreamField Guide" icon="stream" href="https://docs.wagtail.org/en/stable/topics/streamfield.html">
+    Deep dive into StreamField
+  </Card>
+  <Card title="Hooks Reference" icon="hook" href="https://docs.wagtail.org/en/stable/reference/hooks.html">
+    Complete hooks documentation
+  </Card>
+</CardGroup>

@@ -1,0 +1,234 @@
+---
+title: 'create_random_data'
+description: 'Generate random test data for performance and load testing'
+icon: 'shuffle'
+---
+
+## Overview
+
+The `create_random_data` management command generates random pages, snippets, and images for the Wagtail Bakery Demo. This command is particularly useful for performance testing, load testing, and testing the application with large datasets.
+
+<Note>
+This command requires that initial data has already been loaded using `load_initial_data`, as it depends on existing index pages and reference data.
+</Note>
+
+## Usage
+
+```bash
+python manage.py create_random_data <page_count> <snippet_count> <image_count>
+```
+
+## Command Arguments
+
+<ParamField path="page_count" type="integer" required>
+  The number of pages of each type to create. The command will create this many:
+  - Bread pages under the Breads index
+  - Location pages under the Locations index
+  - Blog pages under the Blog index
+  - Standard pages (nested under a new top-level standard page)
+</ParamField>
+
+<ParamField path="snippet_count" type="integer" required>
+  The number of snippets of each type to create:
+  - Countries
+  - Bread Ingredients
+  - Bread Types
+  - People
+  - Footer Text
+</ParamField>
+
+<ParamField path="image_count" type="integer" required>
+  The number of random images to create in the Wagtail image library. Images are randomly selected from the fixture media directory.
+</ParamField>
+
+## Examples
+
+### Create Small Dataset
+
+Generate 10 pages, 5 snippets, and 20 images:
+
+```bash
+python manage.py create_random_data 10 5 20
+```
+
+### Create Large Dataset for Load Testing
+
+Generate 100 pages, 50 snippets, and 200 images:
+
+```bash
+python manage.py create_random_data 100 50 200
+```
+
+### Minimal Data for Development
+
+Generate just a few items:
+
+```bash
+python manage.py create_random_data 3 2 5
+```
+
+## What It Creates
+
+The command generates three types of content:
+
+<Steps>
+  <Step title="Images">
+    Creates random images by selecting from existing fixture media files. Each image gets:
+    - Random title (4 words from Lorem Ipsum)
+    - Proper dimensions extracted from the source image
+    - File size metadata
+  </Step>
+  
+  <Step title="Snippets">
+    Creates random snippets across all types:
+    - **Countries**: Geographic origins for breads
+    - **Bread Ingredients**: Components used in recipes
+    - **Bread Types**: Categories of bread
+    - **People**: Staff members with names and job titles
+    - **Footer Text**: Rich text content blocks
+  </Step>
+  
+  <Step title="Pages">
+    Creates random pages of all types:
+    - **Bread Pages**: Complete with type, origin, and description
+    - **Location Pages**: With addresses and coordinates
+    - **Blog Pages**: With publication dates and subtitles
+    - **Standard Pages**: Nested under a single parent page
+  </Step>
+</Steps>
+
+## Generated Content Details
+
+### Page Content
+
+All pages are created with realistic content:
+
+- **Titles**: 4-word titles generated from Lorem Ipsum
+- **Slugs**: Automatically generated from titles
+- **Introductions**: Single paragraph of Lorem Ipsum
+- **Body Content**: StreamField with 5 paragraphs of rich text
+- **Images**: Randomly selected from the image library
+- **Dates**: Current timestamp for blog posts
+
+### Example Output
+
+```bash
+$ python manage.py create_random_data 5 3 10
+Creating images...
+Creating countries...
+Creating bread ingredients...
+Creating bread types...
+Creating people...
+Creating footer text...
+Creating bread pages...
+Creating location pages...
+Creating blog pages...
+Creating standard pages...
+```
+
+## Source Code Location
+
+`bakerydemo/base/management/commands/create_random_data.py`
+
+## Implementation Details
+
+### Random Data Generation
+
+The command uses Django's built-in `lorem_ipsum` utility for realistic text:
+
+```python
+def make_title(self):
+    return lorem_ipsum.words(4, common=False)
+
+def fake_stream_field(self):
+    return [("paragraph_block", RichText("\n".join(lorem_ipsum.paragraphs(5))))]
+```
+
+### Random Model Selection
+
+When creating pages that need relationships (e.g., bread origin), the command randomly selects existing models:
+
+```python
+def get_random_model(self, model):
+    return model.objects.order_by("?").first()
+```
+
+### Image Source
+
+Images are created from files in:
+```
+bakerydemo/base/fixtures/media/original_images/
+```
+
+The command uses the Willow image library to extract dimensions:
+
+```python
+willow_image = WillowImage.open(image_file)
+width, height = willow_image.get_size()
+```
+
+<Warning>
+Be cautious with large numbers:
+- Creating 1000+ pages can take several minutes
+- Large datasets will increase database size significantly
+- Search index rebuilding may be needed after bulk creation
+- Consider your database and storage capacity
+</Warning>
+
+## Performance Considerations
+
+### Database Impact
+
+Each argument multiplies the data created:
+
+- `page_count=10`: Creates **40 pages** (10 × 4 page types)
+- `snippet_count=10`: Creates **50 snippets** (10 × 5 snippet types)
+- `image_count=10`: Creates **10 images**
+
+### Recommended Limits
+
+| Use Case | page_count | snippet_count | image_count |
+|----------|------------|---------------|-------------|
+| Development | 5-10 | 3-5 | 10-20 |
+| Load Testing | 100-500 | 50-100 | 100-200 |
+| Stress Testing | 1000+ | 500+ | 500+ |
+
+## Prerequisites
+
+<Warning>
+This command requires:
+- Initial data loaded via `load_initial_data`
+- Existing index pages (HomePage, BlogIndexPage, BreadsIndexPage, LocationsIndexPage)
+- At least one image in the fixtures media directory
+</Warning>
+
+## Related Commands
+
+- [`load_initial_data`](/api/commands/load-initial-data) - Load initial fixture data (required first)
+- [`reset_demo`](/api/commands/reset-demo) - Reset database and remove all random data
+
+## Troubleshooting
+
+### "NoneType object has no attribute" errors
+
+This usually means index pages don't exist. Run `load_initial_data` first:
+
+```bash
+python manage.py load_initial_data
+python manage.py create_random_data 10 5 20
+```
+
+### Out of memory errors
+
+Reduce the counts or run the command multiple times with smaller batches:
+
+```bash
+python manage.py create_random_data 100 50 100
+python manage.py create_random_data 100 50 100
+```
+
+## See Also
+
+- [Django management commands](https://docs.djangoproject.com/en/stable/howto/custom-management-commands/)
+- [Wagtail StreamField](https://docs.wagtail.org/en/stable/topics/streamfield.html)
+- [Willow image library](https://github.com/wagtail/Willow)

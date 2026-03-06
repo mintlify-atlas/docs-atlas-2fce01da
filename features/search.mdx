@@ -1,0 +1,245 @@
+---
+title: Search Functionality
+description: Full-text search with database backend and Elasticsearch support
+---
+
+The Wagtail Bakery Demo implements comprehensive search functionality with support for both database and Elasticsearch backends.
+
+## Search Backend Configuration
+
+### Default Database Backend
+
+The demo is configured to use Wagtail's database search backend by default:
+
+```python settings/base.py
+WAGTAILSEARCH_BACKENDS = {
+    "default": {
+        "BACKEND": "wagtail.search.backends.database",
+        "INDEX": "bakerydemo",
+    },
+}
+```
+
+<Note>
+  The database backend is suitable for development and small sites. For production deployments with large content volumes, Elasticsearch is recommended.
+</Note>
+
+### Elasticsearch Support
+
+To use Elasticsearch, update the backend configuration:
+
+```python
+WAGTAILSEARCH_BACKENDS = {
+    "default": {
+        "BACKEND": "wagtail.search.backends.elasticsearch7",
+        "INDEX": "bakerydemo",
+        "URLS": ["http://localhost:9200"],
+    },
+}
+```
+
+## Search View Implementation
+
+The search functionality is implemented in `search/views.py`:
+
+```python search/views.py
+from django.conf import settings
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.shortcuts import render
+from wagtail.contrib.search_promotions.models import Query
+from wagtail.models import Page
+
+from bakerydemo.blog.models import BlogPage
+from bakerydemo.breads.models import BreadPage
+from bakerydemo.locations.models import LocationPage
+
+
+def search(request):
+    # Search
+    search_query = request.GET.get("q", None)
+    if search_query:
+        if "elasticsearch" in settings.WAGTAILSEARCH_BACKENDS["default"]["BACKEND"]:
+            # In production, use ElasticSearch and a simplified search query
+            search_results = Page.objects.live().search(search_query)
+        else:
+            # For database backend, search specific models
+            blog_results = BlogPage.objects.live().search(search_query)
+            blog_page_ids = [p.page_ptr.id for p in blog_results]
+
+            bread_results = BreadPage.objects.live().search(search_query)
+            bread_page_ids = [p.page_ptr.id for p in bread_results]
+
+            location_results = LocationPage.objects.live().search(search_query)
+            location_result_ids = [p.page_ptr.id for p in location_results]
+
+            page_ids = blog_page_ids + bread_page_ids + location_result_ids
+            search_results = Page.objects.live().filter(id__in=page_ids)
+
+        query = Query.get(search_query)
+        # Record hit
+        query.add_hit()
+    else:
+        search_results = Page.objects.none()
+
+    # Pagination
+    page = request.GET.get("page", 1)
+    paginator = Paginator(search_results, 10)
+    try:
+        search_results = paginator.page(page)
+    except PageNotAnInteger:
+        search_results = paginator.page(1)
+    except EmptyPage:
+        search_results = paginator.page(paginator.num_pages)
+
+    return render(
+        request,
+        "search/search_results.html",
+        {
+            "search_query": search_query,
+            "search_results": search_results,
+        },
+    )
+```
+
+## Search Field Configuration
+
+<Steps>
+  <Step title="Define Search Fields">
+    Models specify which fields should be searchable using `index.SearchField`:
+
+    ```python blog/models.py
+    from wagtail.search import index
+
+    class BlogPage(Page):
+        body = StreamField(BaseStreamBlock())
+        
+        search_fields = Page.search_fields + [
+            index.SearchField("body"),
+        ]
+    ```
+  </Step>
+
+  <Step title="Add FilterField for Faceted Search">
+    Use `index.FilterField` for filtering capabilities:
+
+    ```python base/models.py
+    class Person(ClusterableModel):
+        first_name = models.CharField(max_length=254)
+        last_name = models.CharField(max_length=254)
+        job_title = models.CharField(max_length=254)
+        
+        search_fields = [
+            index.SearchField("first_name"),
+            index.SearchField("last_name"),
+            index.FilterField("job_title"),
+        ]
+    ```
+  </Step>
+
+  <Step title="Enable Autocomplete">
+    Add `index.AutocompleteField` for autocomplete functionality:
+
+    ```python base/models.py
+    search_fields = [
+        index.SearchField("first_name"),
+        index.SearchField("last_name"),
+        index.AutocompleteField("first_name"),
+        index.AutocompleteField("last_name"),
+    ]
+    ```
+  </Step>
+</Steps>
+
+## Model-Specific Search Examples
+
+### BreadPage Search
+
+```python breads/models.py
+class BreadPage(Page):
+    introduction = models.TextField(blank=True)
+    body = StreamField(BaseStreamBlock())
+    
+    search_fields = Page.search_fields + [
+        index.SearchField("body"),
+    ]
+```
+
+### LocationPage Search
+
+```python locations/models.py
+class LocationPage(Page):
+    address = models.TextField()
+    body = StreamField(BaseStreamBlock())
+    
+    search_fields = Page.search_fields + [
+        index.SearchField("address"),
+        index.SearchField("body"),
+    ]
+```
+
+## Search Promotions
+
+The demo uses `wagtail.contrib.search_promotions` for promoted search results:
+
+```python settings/base.py
+INSTALLED_APPS = [
+    # ...
+    "wagtail.contrib.search_promotions",
+    # ...
+]
+```
+
+<Accordion title="How Search Promotions Work">
+  Search promotions allow editors to pin specific pages to the top of search results for particular queries. This is useful for:
+  
+  - Highlighting important content
+  - Improving user experience for common searches
+  - Managing search result quality
+  
+  The `Query.get()` and `query.add_hit()` calls in the search view track search queries and their popularity.
+</Accordion>
+
+## Backend Comparison
+
+<CardGroup cols={2}>
+  <Card title="Database Backend" icon="database">
+    **Pros:**
+    - No additional infrastructure needed
+    - Simple setup
+    - Good for development
+    
+    **Cons:**
+    - Limited search capabilities
+    - Slower on large datasets
+    - Requires model-specific queries
+  </Card>
+  <Card title="Elasticsearch Backend" icon="magnifying-glass">
+    **Pros:**
+    - Fast, powerful search
+    - Relevance ranking
+    - Scales well
+    
+    **Cons:**
+    - Requires Elasticsearch server
+    - Additional infrastructure
+    - More complex setup
+  </Card>
+</CardGroup>
+
+## Pagination
+
+Search results are paginated using Django's built-in paginator:
+
+```python
+paginator = Paginator(search_results, 10)  # 10 results per page
+try:
+    search_results = paginator.page(page)
+except PageNotAnInteger:
+    search_results = paginator.page(1)
+except EmptyPage:
+    search_results = paginator.page(paginator.num_pages)
+```
+
+<Note>
+  The search view handles pagination errors gracefully, defaulting to the first or last page when invalid page numbers are requested.
+</Note>

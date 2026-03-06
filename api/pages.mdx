@@ -1,0 +1,276 @@
+---
+title: 'Pages API'
+description: 'Access page content through the Wagtail REST API'
+---
+
+## Overview
+
+The Pages API endpoint provides access to all published pages in the Wagtail CMS. You can retrieve page listings, individual pages, and filter by type or fields.
+
+## Endpoint
+
+```
+GET /api/v2/pages/
+```
+
+## List All Pages
+
+Retrieve a list of all published pages:
+
+<CodeGroup>
+```bash curl
+curl http://localhost:8000/api/v2/pages/
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/pages/')
+pages = response.json()
+```
+
+```javascript JavaScript
+fetch('http://localhost:8000/api/v2/pages/')
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "meta": {
+    "total_count": 15
+  },
+  "items": [
+    {
+      "id": 3,
+      "meta": {
+        "type": "home.HomePage",
+        "detail_url": "http://localhost:8000/api/v2/pages/3/",
+        "html_url": "http://localhost:8000/",
+        "slug": "home",
+        "first_published_at": "2024-01-15T10:30:00Z"
+      },
+      "title": "Home"
+    }
+  ]
+}
+```
+
+## Get Single Page
+
+Retrieve a specific page by ID:
+
+<CodeGroup>
+```bash curl
+curl http://localhost:8000/api/v2/pages/3/
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:8000/api/v2/pages/3/')
+page = response.json()
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "id": 3,
+  "meta": {
+    "type": "home.HomePage",
+    "detail_url": "http://localhost:8000/api/v2/pages/3/",
+    "html_url": "http://localhost:8000/",
+    "slug": "home",
+    "show_in_menus": true,
+    "seo_title": "",
+    "search_description": "",
+    "first_published_at": "2024-01-15T10:30:00Z",
+    "parent": {
+      "id": 1,
+      "meta": {
+        "type": "wagtailcore.Page",
+        "detail_url": "http://localhost:8000/api/v2/pages/1/"
+      },
+      "title": "Root"
+    }
+  },
+  "title": "Home"
+}
+```
+
+## Query Parameters
+
+<ParamField query="type" type="string">
+  Filter pages by type (e.g., `blog.BlogPage`, `home.HomePage`)
+</ParamField>
+
+<ParamField query="child_of" type="integer">
+  Return only pages that are children of the specified page ID
+</ParamField>
+
+<ParamField query="descendant_of" type="integer">
+  Return only pages that are descendants of the specified page ID
+</ParamField>
+
+<ParamField query="fields" type="string">
+  Comma-separated list of fields to include. Use `*` for all fields.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Number of results per page (max 100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of results to skip
+</ParamField>
+
+<ParamField query="order" type="string">
+  Field to order by. Prefix with `-` for descending (e.g., `-first_published_at`)
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search query to filter pages by title and content
+</ParamField>
+
+## Response Fields
+
+### Default Fields
+
+By default, the API returns minimal fields:
+
+<ResponseField name="id" type="integer">
+  Unique identifier for the page
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  The page title
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Metadata about the page
+  
+  <ResponseField name="type" type="string">
+    The page model type (e.g., `blog.BlogPage`)
+  </ResponseField>
+  
+  <ResponseField name="detail_url" type="string">
+    API URL for the full page details
+  </ResponseField>
+  
+  <ResponseField name="html_url" type="string">
+    Public URL of the page on the website
+  </ResponseField>
+  
+  <ResponseField name="slug" type="string">
+    URL slug for the page
+  </ResponseField>
+  
+  <ResponseField name="first_published_at" type="string">
+    ISO 8601 timestamp of first publication
+  </ResponseField>
+</ResponseField>
+
+### All Fields
+
+Request all fields using `?fields=*`:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/3/?fields=*"
+```
+
+This includes additional page-type-specific fields like body content, images, and custom fields defined in your page models.
+
+## Filtering Examples
+
+### Filter by Page Type
+
+Get only blog pages:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?type=blog.BlogPage"
+```
+
+### Get Child Pages
+
+Get all direct children of a page:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?child_of=3"
+```
+
+### Get All Descendants
+
+Get all descendants of a page (children, grandchildren, etc.):
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?descendant_of=3"
+```
+
+### Search Pages
+
+Search for pages containing specific text:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?search=bread"
+```
+
+### Combine Filters
+
+Combine multiple filters and parameters:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?type=blog.BlogPage&fields=*&order=-first_published_at&limit=5"
+```
+
+This returns the 5 most recent blog pages with all fields included.
+
+## Common Page Types
+
+The Wagtail Bakery Demo includes these page types:
+
+| Type | Description |
+|------|-------------|
+| `home.HomePage` | Homepage with hero sections |
+| `blog.BlogIndexPage` | Blog listing page |
+| `blog.BlogPage` | Individual blog post |
+| `breads.BreadIndexPage` | Bread catalog listing |
+| `breads.BreadPage` | Individual bread product |
+| `locations.LocationsIndexPage` | Locations listing |
+| `locations.LocationPage` | Individual location |
+
+## Best Practices
+
+<Note>
+  Always use the `fields` parameter to request only the data you need. This improves performance and reduces bandwidth.
+</Note>
+
+### Request Specific Fields
+
+Instead of requesting all fields with `*`, specify only what you need:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?fields=title,first_published_at,slug"
+```
+
+### Use Pagination
+
+For large datasets, use pagination to avoid timeouts:
+
+```bash
+curl "http://localhost:8000/api/v2/pages/?limit=50&offset=0"
+```
+
+### Cache Responses
+
+Consider caching API responses on the client side to reduce server load and improve performance.
+
+## Next Steps
+
+- Learn about [Images API](/api/images) for accessing image assets
+- Explore [Documents API](/api/documents) for file downloads
+- Review [API Overview](/api/overview) for authentication and rate limiting

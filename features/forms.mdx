@@ -1,0 +1,325 @@
+---
+title: Form Pages
+description: Dynamic forms with email notifications and submission management
+---
+
+The Wagtail Bakery Demo implements form functionality using Wagtail's built-in forms contrib module, allowing editors to create custom forms without writing code.
+
+## Form Configuration
+
+### Enable Forms Module
+
+The forms module is enabled in the installed apps:
+
+```python settings/base.py
+INSTALLED_APPS = [
+    # ...
+    "wagtail.contrib.forms",
+    # ...
+]
+```
+
+<Note>
+  Wagtail forms provide a quick way to generate data-collection and contact forms without writing custom code. For complex form requirements, consider using Django's form framework directly.
+</Note>
+
+## Form Models
+
+### FormField Model
+
+The `FormField` model defines individual form fields:
+
+```python base/models.py
+from wagtail.contrib.forms.models import AbstractFormField
+from modelcluster.fields import ParentalKey
+
+class FormField(AbstractFormField):
+    """
+    Wagtailforms is a module to introduce simple forms on a Wagtail site. It
+    isn't intended as a replacement to Django's form support but as a quick way
+    to generate a general purpose data-collection form or contact form
+    without having to write code.
+    """
+    page = ParentalKey(
+        "FormPage",
+        related_name="form_fields",
+        on_delete=models.CASCADE
+    )
+```
+
+### FormPage Model
+
+The `FormPage` model creates pages with customizable forms:
+
+```python base/models.py
+from wagtail.contrib.forms.models import AbstractEmailForm
+from wagtail.contrib.forms.panels import FormSubmissionsPanel
+from wagtail.admin.panels import (
+    FieldPanel,
+    FieldRowPanel,
+    InlinePanel,
+    MultiFieldPanel,
+)
+
+class FormPage(AbstractEmailForm):
+    image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    body = StreamField(BaseStreamBlock(), use_json_field=True)
+    thank_you_text = RichTextField(blank=True)
+
+    content_panels = AbstractEmailForm.content_panels + [
+        FormSubmissionsPanel(),
+        FieldPanel("image"),
+        FieldPanel("body"),
+        InlinePanel("form_fields", heading="Form fields", label="Field"),
+        FieldPanel("thank_you_text"),
+        MultiFieldPanel(
+            [
+                FieldRowPanel(
+                    [
+                        FieldPanel("from_address"),
+                        FieldPanel("to_address"),
+                    ]
+                ),
+                FieldPanel("subject"),
+            ],
+            "Email",
+        ),
+    ]
+
+    api_fields = [
+        APIField("form_fields"),
+        APIField("from_address"),
+        APIField("to_address"),
+        APIField("subject"),
+        APIField("image"),
+        APIField("body"),
+        APIField("thank_you_text"),
+    ]
+```
+
+## Form Features
+
+<Steps>
+  <Step title="Dynamic Field Creation">
+    Editors can add form fields through the admin interface using `InlinePanel`:
+
+    ```python
+    InlinePanel("form_fields", heading="Form fields", label="Field")
+    ```
+    
+    Available field types include:
+    - Single line text
+    - Multi-line text
+    - Email
+    - Number
+    - URL
+    - Checkbox
+    - Checkboxes (multiple)
+    - Radio buttons
+    - Dropdown
+    - Date
+    - DateTime
+    - Hidden field
+  </Step>
+
+  <Step title="Email Notifications">
+    Configure email settings for form submissions:
+
+    ```python
+    MultiFieldPanel(
+        [
+            FieldRowPanel(
+                [
+                    FieldPanel("from_address"),
+                    FieldPanel("to_address"),
+                ]
+            ),
+            FieldPanel("subject"),
+        ],
+        "Email",
+    )
+    ```
+  </Step>
+
+  <Step title="Submission Management">
+    View and manage form submissions in the admin:
+
+    ```python
+    content_panels = AbstractEmailForm.content_panels + [
+        FormSubmissionsPanel(),
+        # ... other panels
+    ]
+    ```
+  </Step>
+
+  <Step title="Thank You Message">
+    Customize the message shown after successful submission:
+
+    ```python
+    thank_you_text = RichTextField(blank=True)
+    ```
+  </Step>
+</Steps>
+
+## Admin Interface
+
+The form page admin interface provides:
+
+<CardGroup cols={2}>
+  <Card title="Form Builder" icon="plus">
+    Drag-and-drop interface to add and reorder form fields without coding.
+  </Card>
+  <Card title="Submissions Panel" icon="inbox">
+    View all form submissions directly in the page editor with export capabilities.
+  </Card>
+  <Card title="Email Configuration" icon="envelope">
+    Configure recipient addresses and email subject for notifications.
+  </Card>
+  <Card title="Content Integration" icon="layer-group">
+    Combine forms with StreamField content for rich form pages.
+  </Card>
+</CardGroup>
+
+## Form Field Configuration
+
+Each form field can be configured with:
+
+- **Label**: The field label shown to users
+- **Help text**: Additional guidance for filling out the field
+- **Required**: Whether the field must be filled
+- **Field type**: The type of input (text, email, checkbox, etc.)
+- **Choices**: For dropdown, radio, and checkbox fields
+- **Default value**: Pre-populated value
+
+## Example Form Page
+
+<Accordion title="Complete Form Page Implementation">
+  Here's how all the pieces work together:
+
+  ```python base/models.py
+  from wagtail.contrib.forms.models import AbstractEmailForm, AbstractFormField
+  from wagtail.contrib.forms.panels import FormSubmissionsPanel
+  from modelcluster.fields import ParentalKey
+
+  class FormField(AbstractFormField):
+      page = ParentalKey(
+          "FormPage",
+          related_name="form_fields",
+          on_delete=models.CASCADE
+      )
+
+  class FormPage(AbstractEmailForm):
+      image = models.ForeignKey(
+          "wagtailimages.Image",
+          null=True,
+          blank=True,
+          on_delete=models.SET_NULL,
+          related_name="+",
+      )
+      body = StreamField(BaseStreamBlock(), use_json_field=True)
+      thank_you_text = RichTextField(blank=True)
+
+      content_panels = AbstractEmailForm.content_panels + [
+          FormSubmissionsPanel(),
+          FieldPanel("image"),
+          FieldPanel("body"),
+          InlinePanel("form_fields", heading="Form fields", label="Field"),
+          FieldPanel("thank_you_text"),
+          MultiFieldPanel(
+              [
+                  FieldRowPanel(
+                      [
+                          FieldPanel("from_address"),
+                          FieldPanel("to_address"),
+                      ]
+                  ),
+                  FieldPanel("subject"),
+              ],
+              "Email",
+          ),
+      ]
+  ```
+</Accordion>
+
+## Handling Form Submissions
+
+### Viewing Submissions
+
+Submissions are accessible through:
+
+1. **FormSubmissionsPanel** in the page editor
+2. **Forms** section in the Wagtail admin sidebar
+3. **Export to CSV** for data analysis
+
+### Submission Data
+
+Each submission includes:
+
+- Submission date and time
+- All form field responses
+- IP address (if recorded)
+- User information (if authenticated)
+
+## Email Notifications
+
+When a form is submitted, Wagtail can send an email notification:
+
+```python
+# Email settings in FormPage
+from_address = "noreply@example.com"
+to_address = "admin@example.com"
+subject = "New form submission"
+```
+
+<Note>
+  Make sure your Django email backend is properly configured in settings for email notifications to work.
+</Note>
+
+## API Support
+
+Form fields are exposed through the Wagtail API:
+
+```python
+api_fields = [
+    APIField("form_fields"),
+    APIField("from_address"),
+    APIField("to_address"),
+    APIField("subject"),
+    APIField("image"),
+    APIField("body"),
+    APIField("thank_you_text"),
+]
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Spam Protection" icon="shield">
+    Consider adding CAPTCHA or honeypot fields for public forms to prevent spam submissions.
+  </Card>
+  <Card title="Required Fields" icon="asterisk">
+    Mark essential fields as required and provide clear help text for better user experience.
+  </Card>
+  <Card title="Email Testing" icon="vial">
+    Test email notifications in development to ensure proper configuration before going live.
+  </Card>
+  <Card title="Data Privacy" icon="lock">
+    Consider GDPR compliance for form submissions, especially for contact and personal information forms.
+  </Card>
+</CardGroup>
+
+## Customization Options
+
+Extend form functionality by:
+
+- Overriding the `serve()` method for custom form processing
+- Adding custom validation logic
+- Implementing custom success/error handling
+- Storing submissions in external systems
+- Adding file upload fields
